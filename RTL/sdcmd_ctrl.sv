@@ -47,15 +47,15 @@ module sdcmd_ctrl (
     
     //--------------------CRC generation------------------------
     logic [6:0] crc7;
-    logic [38:0] crc_data;
-    assign crc_data = {1'b1, cmd, arg};
+    logic [39:0] crc_data;
+    assign crc_data = {1'b0, 1'b1, cmd, arg};
 
-    function automatic logic [6:0] CalcCrc7(input logic [38:0] crc_data);
+    function automatic logic [6:0] CalcCrc7(input logic [39:0] crc_data);
         int i;
         logic [6:0] crc;
         begin
             crc = 7'b0;
-            for (i = 38; i>=0 ; i--) begin
+            for (i = 39; i>=0 ; i--) begin
                 if (crc_data[i] ^ crc[6]) begin
                     crc = {crc[5:0],1'b0} ^ 7'h9;
                 end
