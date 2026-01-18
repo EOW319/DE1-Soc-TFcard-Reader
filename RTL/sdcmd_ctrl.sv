@@ -16,13 +16,14 @@ module sdcmd_ctrl (
     output logic          done,
     output logic          timeout,
     output logic          syntaxe,
-    output logic  [31:0] resparg
+    output logic  [31:0] resparg,
+    output logic         sdcmdoe
 );
 
 //--------------------------------------------
     localparam [7:0] TIMEOUT = 8'd250;
 
-    typedef enum logic [2:0] {
+    typedef enum logic [3:0] {
     S_IDLE,
     S_LOAD_CMD,
     S_SEND_CMD,
@@ -34,22 +35,24 @@ module sdcmd_ctrl (
     S_TIMEOUT
     } state_t;
     logic [47:0] cmd_shift;
-    logic [2:0] current_state, next_state;
+    logic [3:0] current_state, next_state;
 
-    logic sdcmdoe  = 1'b0;
     logic sdcmdout = 1'b1;
 
     // sdcmd tri-state driver
     assign sdcmd = sdcmdoe ? sdcmdout : 1'bz;
-    logic sdcmdin = sdcmdoe ? 1'b1 : sdcmd;
+    logic sdcmdin;
+    assign sdcmdin = sdcmdoe ? 1'b1 : sdcmd;
 
     logic [15:0] clkcnt;
-    
+
+
     //--------------------CRC generation------------------------
     logic [6:0] crc7;
     logic [39:0] crc_data;
     assign crc_data = {1'b0, 1'b1, cmd, arg};
-
+    //cmd_shift structure: (1b start bit:0) + (1b transmission bit:1) + (6b cmd index) + (32b argument index) +(7bit crc7) + (1b end bit:1)
+    assign cmd_shift = {1'b0,1'b1,cmd[5:0],arg[31:0],crc7[6:0],1'b1};
     function automatic logic [6:0] CalcCrc7(input logic [39:0] crc_data);
         int i;
         logic [6:0] crc;
@@ -98,16 +101,23 @@ module sdcmd_ctrl (
     always_ff @(posedge clk) begin
         if (!rstn) begin
             current_state <= S_IDLE;
-            bit_cnt <= 6'd47;
+            bit_cnt <= 6'd46;
             precnt_reg <= precnt;
             timeout_cnt <= '0;
-            resp_cnt <= 6'd47;
+            resp_cnt <= 6'd46;
         end
         else begin
             current_state <= next_state;
             crc7 <= CalcCrc7(crc_data);
             
-            if (current_state == S_SEND_CMD)begin
+            if(current_state == S_LOAD_CMD)begin
+                precnt_reg <= precnt;
+                timeout_cnt <= 0;
+                resp_cnt <= 6'd46;
+                bit_cnt <= 6'd47;
+            end
+            
+            if (current_state == S_SEND_CMD && (sdclk_q == '0 && sdclk == '1))begin
                 bit_cnt <= bit_cnt - 1;
             end
 
@@ -126,11 +136,15 @@ module sdcmd_ctrl (
             end else begin
                 timeout_cnt <= 0;
             end
-
-            if (current_state == S_READ_RESP)begin
+            if (next_state == S_READ_RESP) begin
+                resp_reg[47] <= sdcmdin;
+                resp_reg[0] <= 1;
+            end
+            if (current_state == S_READ_RESP && (sdclk_q == '0 && sdclk == '1))begin
                 if (resp_cnt != 0) begin
                     resp_cnt <= resp_cnt - 1;
                 end
+                resp_reg[resp_cnt] <= sdcmdin;
             end
             
         end
@@ -164,20 +178,15 @@ module sdcmd_ctrl (
             S_LOAD_CMD:begin
                 busy = 1;
                 sdcmdoe = 0;
-
-                //cmd_shift structure: (1b start bit:0) + (1b transmission bit:1) + (6b cmd index) + (32b argument index) +(7bit crc7) + (1b end bit:1)
-                cmd_shift = {0,1,cmd[5:0],arg[31:0],crc7[6:0],1};
                 next_state = S_SEND_CMD;
             end
 
             S_SEND_CMD: begin
                 busy = 1;
                 sdcmdoe = 1;
-                if (sdclk_q == '0 && sdclk == '1) begin
-                    sdcmdout = cmd_shift[bit_cnt];
-                    if(bit_cnt == 0) begin
-                        next_state = S_PRE_WAIT;
-                    end
+                sdcmdout = cmd_shift[bit_cnt];
+                if(bit_cnt == 0) begin
+                    next_state = S_PRE_WAIT;
                 end
             end
             
@@ -202,11 +211,12 @@ module sdcmd_ctrl (
             
             S_READ_RESP:begin
                 busy = 1;
-                if (resp_cnt != 0) begin
-                    resp_reg[resp_cnt] <= sdcmdin;
-                end
-                else begin
-                    next_state <= S_DONE;   //可以补上一个crc判断 正确进入done 错误进入error
+
+                if (resp_cnt == 0) begin
+                    if (resp_reg[45:40] == cmd) begin
+                        next_state = S_DONE;
+                    end
+                    else next_state = S_ERROR;
                 end
             end
             
@@ -214,18 +224,27 @@ module sdcmd_ctrl (
                 done = 1;
                 busy = 0;
                 resparg = resp_reg[39:8];
+                if (start) begin
+                    next_state = S_LOAD_CMD;
+                end
             end
 
             S_ERROR:begin
                 syntaxe = 1;
-                done = 1;
+                done = 0;
                 busy = 0;
+                if (start) begin
+                    next_state = S_LOAD_CMD;
+                end
             end
 
             S_TIMEOUT: begin
                 timeout = 1;
-                done = 1;
+                done = 0;
                 busy = 0;
+                if (start) begin
+                    next_state = S_LOAD_CMD;
+                end
             end
             
             default: begin
