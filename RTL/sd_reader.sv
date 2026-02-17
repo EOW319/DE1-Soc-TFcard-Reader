@@ -15,7 +15,6 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     output logic [7:0] outbyte,
 
     output logic sdclk,
-    output logic [7:0] sddata,
 
     //sd card interface
     input  logic sddata0,
@@ -35,7 +34,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     logic ctrl_start;
 
     localparam [15:0] FASTCLKDIV = (16'd1 << CLK_DIV) ;
-    localparam [15:0] SLOWCLKDIV = FASTCLKDIV * 16'd5;
+    localparam [15:0] SLOWCLKDIV = SIMULATE ? (FASTCLKDIV * 16'd5) : 16'd256; // 256 for <400kHz at 50MHz
     
     sdcmd_ctrl sdcmd_ctrl(
     .rstn(rst_n),
@@ -98,7 +97,6 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
             sdcmd_stat <= CMD0;
             cmd_step <= 0;
             rbusy <= 1; // Initialization is busy
-            rdone <= 0;
         end
         else begin
             // Default start to 0 to create a pulse, unless set_cmd sets it to 1
@@ -201,7 +199,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                         if (cmd_step == 0) begin
                             set_cmd(1, 0, 17, rsector);
                             rbusy <= 1;
-                            rdone <= 0;
+                            // rdone handled by data logic
                             cmd_step <= 1;
                         end else if (done) begin
                              // Command sent, now wait for data
