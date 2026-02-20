@@ -30,8 +30,10 @@ class sdcmd_base_test extends uvm_test;
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
         env = sdcmd_env::type_id::create("env", this);
-        // TODO: 配置 SD 卡模型并通过 config_db 传给 TB top
-        // 例: uvm_config_db #(sd_card_cfg)::set(this, "*.card_model", "cfg", card_cfg)
+        // 默认关闭 card model 错误注入；由子类测试按需覆盖
+        uvm_config_db #(bit)::set(null, "uvm_test_top", "inject_timeout",   1'b0);
+        uvm_config_db #(bit)::set(null, "uvm_test_top", "inject_crc_error", 1'b0);
+        uvm_config_db #(bit)::set(null, "uvm_test_top", "inject_wrong_cmd", 1'b0);
     endfunction
 
     task run_phase(uvm_phase phase);
@@ -102,8 +104,8 @@ class sdcmd_timeout_test extends sdcmd_base_test;
 
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
-        // TODO: 通过 config_db 配置 sd_card_model 不响应
-        // uvm_config_db #(bit)::set(this, "*.card_model", "inject_timeout", 1)
+        // 配置 card model：不响应任何命令
+        uvm_config_db #(bit)::set(null, "uvm_test_top", "inject_timeout", 1'b1);
     endfunction
 
     virtual task run_test_body(uvm_phase phase);
@@ -129,13 +131,17 @@ class sdcmd_crc_error_test extends sdcmd_base_test;
 
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
-        // TODO: 配置 sd_card_model 注入 CRC 错误
-        // uvm_config_db #(bit)::set(this, "*.card_model", "inject_crc_error", 1)
+        // 配置 card model：响应 CRC7 注入错误
+        uvm_config_db #(bit)::set(null, "uvm_test_top", "inject_crc_error", 1'b1);
     endfunction
 
     virtual task run_test_body(uvm_phase phase);
-        sdcmd_error_seq seq;
-        seq = sdcmd_error_seq::type_id::create("seq");
+        sdcmd_single_seq seq;
+        seq = sdcmd_single_seq::type_id::create("seq");
+        seq.cmd_val     = 6'd8;
+        seq.arg_val     = 32'h0000_01AA;
+        seq.exp_timeout = 0;
+        seq.exp_crc_err = 1;
         seq.start(env.agent.seqr);
         `uvm_info("TEST", "sdcmd_crc_error_test: syntaxe path verified", UVM_NONE)
     endtask

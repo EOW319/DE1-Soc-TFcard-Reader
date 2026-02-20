@@ -21,9 +21,9 @@ class sdcmd_txn extends uvm_sequence_item;
     rand bit [15:0] clkdiv;
     rand bit [15:0] precnt;
 
-    // 定向测试控制字段 (非随机)
-    bit expect_timeout;
-    bit expect_crc_err;
+    // 定向测试控制字段
+    rand bit expect_timeout;
+    rand bit expect_crc_err;
         `uvm_object_utils_begin(sdcmd_txn)
         `uvm_field_int(cmd,             UVM_ALL_ON)
         `uvm_field_int(arg,             UVM_ALL_ON)
@@ -36,6 +36,14 @@ class sdcmd_txn extends uvm_sequence_item;
     constraint c_cmd    { cmd    inside {6'd0, 6'd2, 6'd3, 6'd7, 6'd8, 6'd16, 6'd17, 6'd41, 6'd55}; }
     constraint c_clkdiv { clkdiv inside {[1:200]}; }
     constraint c_precnt { precnt inside {[46:500]}; }
+    constraint c_cmd0_expect_timeout { (cmd == 6'd0) -> (expect_timeout == 1'b1); }
+    constraint c_timeout_crc_mutual_exclusive {
+        expect_timeout -> !expect_crc_err;
+    }
+    // DUT 对 CMD2(R2)/CMD41(R3) 不做 CRC 校验，不应期望 syntaxe
+    constraint c_crc_expect_cmd_support {
+        expect_crc_err -> (cmd inside {6'd3, 6'd7, 6'd8, 6'd16, 6'd17, 6'd55});
+    }
 
     function new(string name = "sdcmd_txn");
         super.new(name);
@@ -109,6 +117,11 @@ class sdcmd_host_driver extends uvm_driver #(sdcmd_txn);
         @(posedge vif.rstn);
         @(posedge vif.clk);
 
+        // 默认关闭注入
+        vif.inject_timeout   <= 1'b0;
+        vif.inject_crc_error <= 1'b0;
+        vif.inject_wrong_cmd <= 1'b0;
+
         forever begin
             seq_item_port.get_next_item(txn);
             drive_txn(txn);
@@ -127,6 +140,10 @@ class sdcmd_host_driver extends uvm_driver #(sdcmd_txn);
         vif.cmd    <= txn.cmd;
         vif.arg    <= txn.arg;
         vif.start  <= 1'b0;
+        // 事务级注入控制：每条 transaction 可不同
+        vif.inject_timeout   <= txn.expect_timeout && (txn.cmd != 6'd0);
+        vif.inject_crc_error <= txn.expect_crc_err;
+        vif.inject_wrong_cmd <= 1'b0;
         @(posedge vif.clk);
 
         // 发出 start 脉冲 (1 个时钟)

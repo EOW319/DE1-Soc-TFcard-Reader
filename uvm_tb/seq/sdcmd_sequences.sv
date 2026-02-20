@@ -127,9 +127,6 @@ class sdcmd_rand_seq extends uvm_sequence #(sdcmd_txn);
             start_item(txn);
             if (!txn.randomize())
                 `uvm_fatal("SEQ", "sdcmd_txn randomize() failed")
-            if (txn.cmd != 0) txn.expect_timeout = 0;
-            else txn.expect_timeout = 1;
-            txn.expect_crc_err = 0;
             finish_item(txn);
         end
     endtask
@@ -166,10 +163,6 @@ class sdcmd_covdriven_seq extends uvm_sequence #(sdcmd_txn);
                 if (!txn.randomize())
                     `uvm_fatal("SEQ", "sdcmd_txn randomize() failed")
             end
-
-            if (txn.cmd != 0) txn.expect_timeout = 0;
-            else txn.expect_timeout = 1;
-            txn.expect_crc_err = 0;
 
             finish_item(txn);
         end

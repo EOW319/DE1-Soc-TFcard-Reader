@@ -20,6 +20,9 @@ interface sdcmd_if (
     logic [5:0]  cmd;       // 命令索引
     logic [31:0] arg;       // 命令参数
     logic        start;     // 命令发送触发 (脉冲)
+    logic        inject_timeout;   // 事务级错误注入: 不响应
+    logic        inject_crc_error; // 事务级错误注入: CRC 错误
+    logic        inject_wrong_cmd; // 事务级错误注入: cmd index 错误
 
     // -------------------------------------------------------------------------
     // DUT 输出侧状态信号 (由 Monitor 采样)
@@ -55,6 +58,7 @@ interface sdcmd_if (
     modport host_drv (
         input  clk, rstn,
         output clkdiv, precnt, cmd, arg, start,
+        output inject_timeout, inject_crc_error, inject_wrong_cmd,
         input  busy, done, timeout, syntaxe, resparg,
         input  sdclk, sdcmd_wire
     );
@@ -63,6 +67,7 @@ interface sdcmd_if (
     modport host_mon (
         input  clk, rstn,
         input  clkdiv, precnt, cmd, arg, start,
+        input  inject_timeout, inject_crc_error, inject_wrong_cmd,
         input  busy, done, timeout, syntaxe, resparg, dut_resp_cmd_idx_dbg,
         input  sdclk, sdcmdoe, dut_cmd_out,
         input  card_oe, card_cmd_out,

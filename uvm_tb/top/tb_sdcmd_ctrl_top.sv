@@ -97,6 +97,36 @@ module tb_sdcmd_ctrl_top;
     );
 
     // =========================================================================
+    // card model 错误注入配置 (来自 UVM config_db)
+    // =========================================================================
+    initial begin
+        bit inject_timeout_cfg;
+        bit inject_crc_error_cfg;
+        bit inject_wrong_cmd_cfg;
+
+        // 等待 UVM build_phase 完成配置后再读取
+        @(posedge rstn);
+
+        if (!uvm_config_db #(bit)::get(null, "uvm_test_top", "inject_timeout", inject_timeout_cfg))
+            inject_timeout_cfg = 1'b0;
+        if (!uvm_config_db #(bit)::get(null, "uvm_test_top", "inject_crc_error", inject_crc_error_cfg))
+            inject_crc_error_cfg = 1'b0;
+        if (!uvm_config_db #(bit)::get(null, "uvm_test_top", "inject_wrong_cmd", inject_wrong_cmd_cfg))
+            inject_wrong_cmd_cfg = 1'b0;
+
+        `uvm_info("TB_CFG", $sformatf("card_model inject: timeout=%0b crc_error=%0b wrong_cmd=%0b",
+                  inject_timeout_cfg, inject_crc_error_cfg, inject_wrong_cmd_cfg), UVM_LOW)
+
+        // 你要求的方案：在 top 中每个 clk 更新注入状态
+        forever begin
+            @(posedge clk);
+            u_card_model.inject_timeout   = inject_timeout_cfg   | u_sdcmd_if.inject_timeout;
+            u_card_model.inject_crc_error = inject_crc_error_cfg | u_sdcmd_if.inject_crc_error;
+            u_card_model.inject_wrong_cmd = inject_wrong_cmd_cfg | u_sdcmd_if.inject_wrong_cmd;
+        end
+    end
+
+    // =========================================================================
     // UVM 启动
     // =========================================================================
     initial begin
