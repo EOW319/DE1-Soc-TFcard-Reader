@@ -29,7 +29,7 @@
 
 module sd_card_model #(
     parameter int TOTAL_SECTORS = 4096,          // 磁盘总扇区数
-    parameter int NCR_CYCLES    = 8,              // 命令到响应延迟 (sdclk 周期)
+    parameter int NCR_CYCLES    = 64,              // 命令到响应延迟 (sdclk 周期)
     parameter int RCA_VAL       = 32'h0001_0000   // 相对卡地址
 ) (
     input  logic        sdclk,
@@ -106,9 +106,10 @@ module sd_card_model #(
                 logic [31:0] arg;
                 logic [6:0]  crc7_rx;
 
-                // 在后续 48 个 sdclk 上升沿采样
+                // 在后续 48 个 sdclk 下降沿采样
+                // (DUT 在上升沿更新发送位，下降沿采样可避免边沿竞争)
                 for (int i = 47; i >= 0; i--) begin
-                    @(posedge sdclk);
+                    @(negedge sdclk);
                     frame[i] = sdcmd_obs;
                 end
 

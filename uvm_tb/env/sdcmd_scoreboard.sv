@@ -114,7 +114,8 @@ class sdcmd_scoreboard extends uvm_scoreboard;
             end
         end else begin
             if (!item.got_done) begin
-                `uvm_error("SB", "Expected done but DUT asserted timeout or syntaxe")
+                `uvm_error("SB", $sformatf("Expected done but DUT asserted timeout or syntaxe (done=%0b timeout=%0b syntaxe=%0b, dut_resp_reg[45:40]=0x%0h)",
+                           item.got_done, item.got_timeout, item.got_syntaxe, item.dut_resp_cmd_idx_dbg))
                 err = 1;
             end
         end
@@ -131,7 +132,7 @@ class sdcmd_scoreboard extends uvm_scoreboard;
 
         if (!err) begin
             pass_cnt++;
-            `uvm_info("SB", $sformatf("PASS [%0d]: CMD%0d arg=0x%08X", pass_cnt, txn.cmd, txn.arg), UVM_HIGH)
+            `uvm_info("SB", $sformatf("PASS [%0d]: CMD%0d arg=0x%08X", pass_cnt, txn.cmd, txn.arg), UVM_MEDIUM)
         end else begin
             fail_cnt++;
         end

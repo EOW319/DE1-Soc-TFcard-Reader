@@ -75,8 +75,16 @@ module sdcmd_ctrl (
     logic [5:0] bit_cnt;
     logic [15:0] precnt_reg;
     logic [7:0] timeout_cnt;
-    logic [5:0] resp_cnt;
+    logic [7:0] resp_cnt;
     logic [47:0] resp_reg;
+    logic [5:0] expected_resp_cmd_idx;
+
+    always_comb begin
+        unique case (cmd_reg)
+            6'd2, 6'd41: expected_resp_cmd_idx = 6'h3F; // R2/R3 response expect cmd index = 0x3F
+            default:      expected_resp_cmd_idx = cmd_reg;
+        endcase
+    end
 //-----------------------SDCLK divider---------------------
     
     always_ff @(posedge clk) begin : clk_divider
@@ -106,7 +114,7 @@ module sdcmd_ctrl (
             timeout_cnt   <= '0;
             resp_cnt      <= 6'd0;
             cmd_reg       <= '0;
-            resp_reg      <= '1;
+            resp_reg      <= '0;
         end
         else begin
             current_state <= next_state;
@@ -116,10 +124,10 @@ module sdcmd_ctrl (
             if (current_state == S_LOAD_CMD) begin
                 precnt_reg  <= precnt;
                 timeout_cnt <= '0;
-                resp_cnt    <= 6'd47;       // S_READ_RESP 中移位 47 次
+                resp_cnt    <= (cmd == 6'd2) ? 8'd135 : 8'd47; // CMD2: R2(136b), 其他: 48b
                 bit_cnt     <= 6'd47;       // S_SEND_CMD 中发送 48 bit (47 down to 0)
                 cmd_reg     <= cmd;
-                resp_reg    <= '1;          // 重置为全 1 (空闲状态)
+                resp_reg    <= '0;          // 重置为全 0 (空闲状态)
             end
 
             // --- S_SEND_CMD: sdclk 上升沿递减 bit_cnt ---
@@ -148,8 +156,11 @@ module sdcmd_ctrl (
 
             // --- S_READ_RESP: 每个 sdclk 上升沿移位采样一个 bit ---
             if (current_state == S_READ_RESP && sdclk_q == 1'b0 && sdclk == 1'b1) begin
-                resp_reg <= {resp_reg[46:0], sdcmdin};
-                resp_cnt <= resp_cnt - 6'd1;
+                // CMD2(R2,136-bit): 仅保留前 48-bit 响应头用于语法校验，其余 88-bit 只消耗不覆盖
+                if ((cmd_reg != 6'd2) || (resp_cnt > 8'd88)) begin
+                    resp_reg <= {resp_reg[46:0], sdcmdin};
+                end
+                resp_cnt <= resp_cnt - 8'd1;
             end
 
         end
@@ -204,7 +215,7 @@ module sdcmd_ctrl (
             S_READ_RESP: begin
                 busy = 1'b1;
                 if (resp_cnt == 6'd0) begin
-                    if (resp_reg[45:40] == cmd_reg)
+                    if (resp_reg[45:40] == expected_resp_cmd_idx)
                         next_state = S_DONE;
                     else
                         next_state = S_ERROR;
@@ -213,7 +224,7 @@ module sdcmd_ctrl (
 
             S_DONE: begin
                 done    = 1'b1;
-                resparg = resp_reg[39:8];
+                resparg = (cmd_reg == 6'd2) ? 32'h0 : resp_reg[39:8];
                 if (start)
                     next_state = S_LOAD_CMD;
             end

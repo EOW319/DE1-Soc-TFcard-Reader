@@ -63,7 +63,7 @@ class sdcmd_smoke_test extends sdcmd_base_test;
         seq.cmd_val    = 6'd8;
         seq.arg_val    = 32'h0000_01AA;
         seq.clkdiv_val = 16'd4;
-        seq.precnt_val = 16'd2;   // 必须 <= NCR_CYCLES(8)，否则 DUT 会错过响应帧
+        seq.precnt_val = 16'd46;  
         seq.exp_timeout = 0;
         seq.start(env.agent.seqr);
         `uvm_info("TEST", "sdcmd_smoke_test: CMD8 sent, checking R7 response", UVM_NONE)

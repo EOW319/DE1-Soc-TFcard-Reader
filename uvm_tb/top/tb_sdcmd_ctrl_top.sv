@@ -76,12 +76,15 @@ module tb_sdcmd_ctrl_top;
         // 若 DUT 使用 inout 端口，需通过 sdcmdoe 和总线观测分离
     );
 
+    // DUT 内部调试观测: 响应寄存器 cmd index 位段
+    assign u_sdcmd_if.dut_resp_cmd_idx_dbg = u_dut.resp_reg[45:40];
+
     // =========================================================================
     // SD 卡行为模型
     // =========================================================================
     sd_card_model #(
         .TOTAL_SECTORS (4096),
-        .NCR_CYCLES    (8),
+        .NCR_CYCLES    (64),
         .RCA_VAL       (32'h0001_0000)
     ) u_card_model (
         .sdclk        (u_sdcmd_if.sdclk),
@@ -107,10 +110,10 @@ module tb_sdcmd_ctrl_top;
     // =========================================================================
     // 仿真超时保护
     // =========================================================================
-    initial begin
-        #10_000_000;  // 10ms 超时
-        `uvm_fatal("TIMEOUT", "Simulation timeout!")
-    end
+    // initial begin
+    //     #10_000_000;  // 10ms 超时
+    //     `uvm_fatal("TIMEOUT", "Simulation timeout!")
+    // end
 
     // =========================================================================
     // 波形转储

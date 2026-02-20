@@ -60,6 +60,7 @@ class sdcmd_mon_item extends uvm_sequence_item;
     bit        got_timeout;
     bit        got_syntaxe;
     bit [31:0] resparg;      // DUT 输出的 resparg
+    bit [5:0]  dut_resp_cmd_idx_dbg; // DUT 内部 resp_reg[45:40]
     bit [15:0] clkdiv;       // 采样的 clkdiv (供 coverage 使用)
     bit [15:0] precnt;       // 采样的 precnt (供 coverage 使用)
 
@@ -71,6 +72,7 @@ class sdcmd_mon_item extends uvm_sequence_item;
         `uvm_field_int(got_timeout, UVM_ALL_ON)
         `uvm_field_int(got_syntaxe, UVM_ALL_ON)
         `uvm_field_int(resparg,     UVM_ALL_ON)
+        `uvm_field_int(dut_resp_cmd_idx_dbg, UVM_ALL_ON)
         `uvm_field_int(clkdiv,      UVM_ALL_ON)
         `uvm_field_int(precnt,      UVM_ALL_ON)
     `uvm_object_utils_end
@@ -193,6 +195,7 @@ class sdcmd_host_monitor extends uvm_monitor;
             item.got_timeout = vif.timeout;
             item.got_syntaxe = vif.syntaxe;
             item.resparg     = vif.resparg;
+            item.dut_resp_cmd_idx_dbg = vif.dut_resp_cmd_idx_dbg;
             item.resp_valid  = vif.done;
 
             `uvm_info("MON", $sformatf("Observed CMD%0d arg=0x%08X done=%0b to=%0b syn=%0b resparg=0x%08X",

@@ -29,6 +29,7 @@ interface sdcmd_if (
     logic        timeout;   // 响应超时
     logic        syntaxe;   // 响应校验错误 (cmd index 不匹配)
     logic [31:0] resparg;   // 响应参数 resp[39:8]
+    logic [5:0]  dut_resp_cmd_idx_dbg; // DUT 内部 resp_reg[45:40] 调试观测
 
     // -------------------------------------------------------------------------
     // SD CMD 三态总线建模
@@ -62,7 +63,7 @@ interface sdcmd_if (
     modport host_mon (
         input  clk, rstn,
         input  clkdiv, precnt, cmd, arg, start,
-        input  busy, done, timeout, syntaxe, resparg,
+        input  busy, done, timeout, syntaxe, resparg, dut_resp_cmd_idx_dbg,
         input  sdclk, sdcmdoe, dut_cmd_out,
         input  card_oe, card_cmd_out,
         input  sdcmd_wire
