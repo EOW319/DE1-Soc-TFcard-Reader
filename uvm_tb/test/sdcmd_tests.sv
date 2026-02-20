@@ -36,6 +36,9 @@ class sdcmd_base_test extends uvm_test;
     task run_phase(uvm_phase phase);
         phase.raise_objection(this);
         run_test_body(phase);
+        // Allow monitor time to observe the last DUT output and publish
+        // Use a longer delay (100us) to ensure all transactions complete
+        #100000;
         phase.drop_objection(this);
     endtask
 
@@ -60,7 +63,7 @@ class sdcmd_smoke_test extends sdcmd_base_test;
         seq.cmd_val    = 6'd8;
         seq.arg_val    = 32'h0000_01AA;
         seq.clkdiv_val = 16'd4;
-        seq.precnt_val = 16'd46;
+        seq.precnt_val = 16'd2;   // 必须 <= NCR_CYCLES(8)，否则 DUT 会错过响应帧
         seq.exp_timeout = 0;
         seq.start(env.agent.seqr);
         `uvm_info("TEST", "sdcmd_smoke_test: CMD8 sent, checking R7 response", UVM_NONE)

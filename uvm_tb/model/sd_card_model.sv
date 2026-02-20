@@ -179,14 +179,26 @@ module sd_card_model #(
 
     // R1: 48-bit 标准响应
     task automatic send_r1(input logic [5:0] cmd, input logic [31:0] status);
-        logic [39:0] payload;
-        logic [6:0]  crc;
         logic [47:0] frame;
+        logic [6:0]  crc;
+        logic [39:0] crc_payload;
+        logic [5:0]  cmd_to_send;
 
-        payload = {2'b00, cmd, status};  // start=0, dir=0(card)
-        crc     = inject_crc_error ? 7'h7F : calc_crc7(payload);
-        if (inject_wrong_cmd) cmd = ~cmd; // 污染 cmd index
-        frame   = {1'b0, 1'b0, inject_wrong_cmd ? ~cmd : cmd, status, crc, 1'b1};
+        // 准备发送的 cmd（可能被污染）
+        cmd_to_send = inject_wrong_cmd ? ~cmd : cmd;
+        
+        // CRC 计算: {start=0, dir=1, cmd, status}
+        crc_payload = {1'b0, 1'b1, cmd_to_send};
+        crc_payload[31:0] = status;
+        crc = inject_crc_error ? 7'h7F : calc_crc7({1'b0, 1'b1, cmd_to_send, status});
+        
+        // 构建响应帧: 显式指定每个字段的位置
+        frame[47]    = 1'b0;              // start bit
+        frame[46]    = 1'b1;              // direction bit (card to host)
+        frame[45:40] = cmd_to_send;       // command index (关键!)
+        frame[39:8]  = status;            // card status
+        frame[7:1]   = crc;               // CRC7
+        frame[0]     = 1'b1;              // end bit
 
         drive_cmd_bits({88'h0, frame}, 48);
     endtask
@@ -207,14 +219,27 @@ module sd_card_model #(
         // 假 CID: 全固定值
         logic [127:0] cid = 128'hDEAD_BEEF_CAFE_BABE_1234_5678_9ABC_DEF0;
         logic [135:0] frame;
-        frame = {1'b0, 1'b0, 6'b111111, cid, 1'b1}; // start=0,dir=0,cmd=0x3F
+        logic [5:0]  cmd_to_send;
+        
+        // R2 响应格式:start(0) + dir(1) + cmd_idx(6'b111111) + CID(128) + end_bit(1)
+        cmd_to_send = inject_wrong_cmd ? ~cmd : cmd;
+        frame[135]   = 1'b0;              // start bit
+        frame[134]   = 1'b1;              // direction bit
+        frame[133:128] = 6'b111111;       // cmd index (R2 always 0x3F)
+        frame[127:0] = cid;               // CID
         drive_cmd_bits(frame, 136);
     endtask
 
     // R3: 48-bit OCR 响应 (CRC7 字段为全 1，无实际 CRC)
     task automatic send_r3(input logic [31:0] ocr);
         logic [47:0] frame;
-        frame = {1'b0, 1'b0, 6'b111111, ocr, 7'h7F, 1'b1};
+        // R3 响应格式: start(0) + dir(1) + cmd_idx(6'b111111) + OCR(32) + crc_bits(7'h7F) + end(1)
+        frame[47]    = 1'b0;              // start bit
+        frame[46]    = 1'b1;              // direction bit (card to host)
+        frame[45:40] = 6'b111111;         // cmd index (R3 always 0x3F)
+        frame[39:8]  = ocr;               // OCR register
+        frame[7:1]   = 7'h7F;             // CRC bits (all 1s, no real CRC)
+        frame[0]     = 1'b1;              // end bit
         drive_cmd_bits({88'h0, frame}, 48);
     endtask
 

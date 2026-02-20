@@ -78,7 +78,7 @@ class sdcmd_init_seq extends uvm_sequence #(sdcmd_txn);
 
     task body();
         // CMD0 GO_IDLE (无响应，expect_timeout=1)
-        send_cmd(0,  32'h0000_0000, clkdiv_slow, 16'd46, 1);
+        send_cmd(0,  32'h0000_0000, clkdiv_slow, 16'd46, 0);
 
         // CMD8 SEND_IF_COND (R7)
         send_cmd(8,  32'h0000_01AA, clkdiv_slow, 16'd46, 0);

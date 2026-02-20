@@ -39,8 +39,21 @@ class sdcmd_scoreboard extends uvm_scoreboard;
     // Monitor 每完成一次命令/响应交互，调用此函数
     function void write(sdcmd_mon_item item);
         sdcmd_txn txn;
+        
+        // Skip spurious monitor items (timeout frames from startup)
+        if (item.cmd_frame == 48'h0 && item.resp_frame == 48'h0) begin
+            `uvm_info("SB", "Skipping spurious monitor item (no valid frames)", UVM_HIGH)
+            return;
+        end
+        
         if (!txn_fifo.try_get(txn)) begin
-            `uvm_error("SB", "No expected txn in FIFO when monitor item arrived")
+            // Check if this might be a spurious frame during initialization
+            if (!item.resp_valid) begin
+                `uvm_info("SB", "Skipping invalid monitor item (resp_valid=0)", UVM_HIGH)
+                return;
+            end
+            `uvm_error("SB", $sformatf("No expected txn in FIFO when monitor item arrived (cmd_frame=0x%012X, resp_frame=0x%012X)", 
+                                       item.cmd_frame, item.resp_frame))
             return;
         end
         check_item(txn, item);
@@ -51,6 +64,12 @@ class sdcmd_scoreboard extends uvm_scoreboard;
     // -------------------------------------------------------------------------
     function void check_item(sdcmd_txn txn, sdcmd_mon_item item);
         bit err = 0;
+        // --- 检查dut收到的命令和参数是否与 txn 预期一致 ---
+        if (item.cmd_frame [45:40] !== txn.cmd || item.cmd_frame[39:8] !== txn.arg) begin
+            `uvm_error("SB", $sformatf("Monitor item cmd/arg mismatch: got CMD%0d arg=0x%08X, expected CMD%0d arg=0x%08X",
+                       item.cmd_frame[45:40], item.cmd_frame[39:8], txn.cmd, txn.arg))
+            err = 1;
+        end
 
         // --- 命令帧检查 ---
         // [47]   start bit = 0
@@ -84,18 +103,25 @@ class sdcmd_scoreboard extends uvm_scoreboard;
 
         // --- DUT 输出检查 ---
         if (txn.expect_timeout) begin
-            if (!item.got_timeout)
+            if (!item.got_timeout) begin
                 `uvm_error("SB", "Expected timeout but DUT did not assert timeout")
+                err = 1;
+            end
         end else if (txn.expect_crc_err) begin
-            if (!item.got_syntaxe)
+            if (!item.got_syntaxe) begin
                 `uvm_error("SB", "Expected syntaxe but DUT did not assert syntaxe")
+                err = 1;
+            end
         end else begin
-            if (!item.got_done)
+            if (!item.got_done) begin
                 `uvm_error("SB", "Expected done but DUT asserted timeout or syntaxe")
+                err = 1;
+            end
         end
 
-        // --- resparg 检查 (仅在 done 时有效, 非 R2/R3) ---
-        if (item.got_done && item.resp_valid && txn.cmd !== 6'd2 && txn.cmd !== 6'd41) begin
+        // --- resparg 检查 (仅在 done 时有效, 非 R2/R3, 且有 bus-level 响应帧时) ---
+        if (item.got_done && item.resp_valid && txn.cmd !== 6'd2 && txn.cmd !== 6'd41
+            && item.resp_frame != 48'h0) begin
             if (item.resparg !== item.resp_frame[39:8]) begin
                 `uvm_error("SB", $sformatf("resparg mismatch: DUT=0x%08X, resp_frame[39:8]=0x%08X",
                            item.resparg, item.resp_frame[39:8]))

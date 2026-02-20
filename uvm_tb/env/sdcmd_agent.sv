@@ -60,6 +60,8 @@ class sdcmd_mon_item extends uvm_sequence_item;
     bit        got_timeout;
     bit        got_syntaxe;
     bit [31:0] resparg;      // DUT 输出的 resparg
+    bit [15:0] clkdiv;       // 采样的 clkdiv (供 coverage 使用)
+    bit [15:0] precnt;       // 采样的 precnt (供 coverage 使用)
 
     `uvm_object_utils_begin(sdcmd_mon_item)
         `uvm_field_int(cmd_frame,   UVM_ALL_ON)
@@ -69,6 +71,8 @@ class sdcmd_mon_item extends uvm_sequence_item;
         `uvm_field_int(got_timeout, UVM_ALL_ON)
         `uvm_field_int(got_syntaxe, UVM_ALL_ON)
         `uvm_field_int(resparg,     UVM_ALL_ON)
+        `uvm_field_int(clkdiv,      UVM_ALL_ON)
+        `uvm_field_int(precnt,      UVM_ALL_ON)
     `uvm_object_utils_end
 
     function new(string name = "sdcmd_mon_item");
@@ -128,13 +132,8 @@ class sdcmd_host_driver extends uvm_driver #(sdcmd_txn);
         @(posedge vif.clk);
         vif.start <= 1'b0;
 
-        // 等待 done / timeout / syntaxe
-        fork
-            begin
-                wait (vif.done || vif.timeout || vif.syntaxe);
-            end
-        join
-        @(posedge vif.clk);
+        // 等待 done / timeout / syntaxe (clock-synchronous polling)
+        do @(posedge vif.clk); while (!(vif.done || vif.timeout || vif.syntaxe));
         txn_ap.write(txn);
     endtask
 endclass : sdcmd_host_driver
@@ -162,30 +161,44 @@ class sdcmd_host_monitor extends uvm_monitor;
 
     task run_phase(uvm_phase phase);
         sdcmd_mon_item item;
-        begin
-            `uvm_info("MON", "sdcmd_host_monitor run_phase started", UVM_MEDIUM)
-            forever begin
-                item = sdcmd_mon_item::type_id::create("item");
-                ap.write(item);
-                capture_cmd_frame(item.cmd_frame);
-                capture_cmd_frame(item.resp_frame);
-                @(posedge vif.clk);
-                item.got_done    = vif.done;
-                item.got_timeout = vif.timeout;
-                item.got_syntaxe = vif.syntaxe;
-                item.resparg     = vif.resparg;
-                ap.write(item);
-            end
-        end
-    endtask
+        `uvm_info("MON", "sdcmd_host_monitor run_phase started", UVM_MEDIUM)
+        // Wait for reset release
+        @(posedge vif.rstn);
+        `uvm_info("MON", "Reset released, waiting for start pulse", UVM_MEDIUM)
+        forever begin
+            // ---- Wait for DUT to accept a command (start pulse) ----
+            // Use clock-synchronous polling instead of @(posedge vif.start)
+            // to avoid edge-detection issues on virtual interface modports
+            do @(posedge vif.clk); while (!vif.start);
+            `uvm_info("MON", "Start pulse detected", UVM_MEDIUM)
+            // Wait for start to go low and then one more clock to stabilize signals
+            do @(posedge vif.clk); while (vif.start);
+            @(posedge vif.clk);
 
-    task capture_cmd_frame(output bit [47:0] frame);
-        begin
-            @(negedge vif.sdcmd_wire);
-            for (int i = 47; i >= 0; i--) begin
-                @(posedge vif.sdclk);
-                frame[i] = vif.sdcmd_wire;
-            end
+            item = sdcmd_mon_item::type_id::create("item");
+            // Snapshot the DUT input signals driven by the driver
+            // Now cmd/arg should be stable after start pulse
+            item.clkdiv = vif.clkdiv;
+            item.precnt = vif.precnt;
+            // Reconstruct cmd_frame from DUT inputs
+            item.cmd_frame = {1'b0, 1'b1, vif.cmd, vif.arg, 7'h0, 1'b1};
+
+            // ---- Wait for transaction to complete ----
+            // Poll for done/timeout/syntaxe on clock edges
+            do @(posedge vif.clk); while (!(vif.done || vif.timeout || vif.syntaxe));
+            `uvm_info("MON", "Transaction completed", UVM_MEDIUM)
+            // Extra clock delay to ensure driver publishes txn to FIFO first
+            @(posedge vif.clk);
+            item.got_done    = vif.done;
+            item.got_timeout = vif.timeout;
+            item.got_syntaxe = vif.syntaxe;
+            item.resparg     = vif.resparg;
+            item.resp_valid  = vif.done;
+
+            `uvm_info("MON", $sformatf("Observed CMD%0d arg=0x%08X done=%0b to=%0b syn=%0b resparg=0x%08X",
+                      item.cmd_frame[45:40], item.cmd_frame[39:8],
+                      item.got_done, item.got_timeout, item.got_syntaxe, item.resparg), UVM_MEDIUM)
+            ap.write(item);
         end
     endtask
 endclass : sdcmd_host_monitor

@@ -89,14 +89,13 @@ class sdcmd_coverage extends uvm_subscriber #(sdcmd_mon_item);
     endfunction
 
     // Monitor 发布 mon_item 后调用此函数
-    // 注意: clkdiv/precnt 需从其他来源 (txn) 获取，此处 TODO
     virtual function void write(sdcmd_mon_item t);
         cur_done    = t.got_done;
         cur_timeout = t.got_timeout;
         cur_syntaxe = t.got_syntaxe;
-        // cur_cmd / cur_clkdiv / cur_precnt 从 txn 获取 (TODO: 连接 txn analysis port)
-        // cur_cmd = t.cmd_frame[45:40]; // 也可直接从 cmd_frame 解析
-        cur_cmd = t.cmd_frame[45:40];
+        cur_cmd     = t.cmd_frame[45:40];
+        cur_clkdiv  = t.clkdiv;
+        cur_precnt  = t.precnt;
 
         cg_cmd.sample();
         cg_result.sample();

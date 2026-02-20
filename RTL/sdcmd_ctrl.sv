@@ -36,7 +36,7 @@ module sdcmd_ctrl (
     } state_t;
     logic [47:0] cmd_shift;
     logic [3:0] current_state, next_state;
-
+    logic [5:0] cmd_reg;
     logic sdcmdout = 1'b1;
 
     // sdcmd tri-state driver
@@ -101,165 +101,140 @@ module sdcmd_ctrl (
     always_ff @(posedge clk) begin
         if (!rstn) begin
             current_state <= S_IDLE;
-            bit_cnt <= 6'd46;
-            precnt_reg <= precnt;
-            timeout_cnt <= '0;
-            resp_cnt <= 6'd46;
+            bit_cnt       <= 6'd0;
+            precnt_reg    <= '0;
+            timeout_cnt   <= '0;
+            resp_cnt      <= 6'd0;
+            cmd_reg       <= '0;
+            resp_reg      <= '1;
         end
         else begin
             current_state <= next_state;
             crc7 <= CalcCrc7(crc_data);
-            
-            if(current_state == S_LOAD_CMD)begin
-                precnt_reg <= precnt;
-                timeout_cnt <= 0;
-                resp_cnt <= 6'd46;
-                bit_cnt <= 6'd47;
-            end
-            
-            if (current_state == S_SEND_CMD && (sdclk_q == '0 && sdclk == '1))begin
-                bit_cnt <= bit_cnt - 1;
+
+            // --- S_LOAD_CMD: 锁存参数，初始化计数器 ---
+            if (current_state == S_LOAD_CMD) begin
+                precnt_reg  <= precnt;
+                timeout_cnt <= '0;
+                resp_cnt    <= 6'd47;       // S_READ_RESP 中移位 47 次
+                bit_cnt     <= 6'd47;       // S_SEND_CMD 中发送 48 bit (47 down to 0)
+                cmd_reg     <= cmd;
+                resp_reg    <= '1;          // 重置为全 1 (空闲状态)
             end
 
-            if (current_state == S_PRE_WAIT) begin
-                if (sdclk == 1 && sdclk_q == 0) begin
-                    if (precnt_reg != 0) begin
-                        precnt_reg <= precnt_reg - 1;
+            // --- S_SEND_CMD: sdclk 上升沿递减 bit_cnt ---
+            if (current_state == S_SEND_CMD && sdclk_q == 1'b0 && sdclk == 1'b1) begin
+                bit_cnt <= bit_cnt - 6'd1;
+            end
+
+            // --- S_PRE_WAIT: 等待 precnt 个 sdclk 上升沿 ---
+            if (current_state == S_PRE_WAIT && sdclk == 1'b1 && sdclk_q == 1'b0) begin
+                if (precnt_reg != '0)
+                    precnt_reg <= precnt_reg - 16'd1;
+            end
+
+            // --- S_WAIT_RESP: 等待 start bit，检测到后移位寄存 ---
+            if (current_state == S_WAIT_RESP) begin
+                if (sdclk == 1'b1 && sdclk_q == 1'b0) begin
+                    timeout_cnt <= timeout_cnt + 8'd1;
+                    if (sdcmdin == 1'b0) begin
+                        // 检测到 start bit (0)，移位进 resp_reg
+                        resp_reg <= {resp_reg[46:0], sdcmdin};
                     end
                 end
+            end else begin
+                timeout_cnt <= '0;
             end
 
-            if (current_state == S_WAIT_RESP) begin   
-                if (sdclk == 1 && sdclk_q == 0) begin
-                    timeout_cnt <= timeout_cnt + 1;
-                end
-            end else begin
-                timeout_cnt <= 0;
+            // --- S_READ_RESP: 每个 sdclk 上升沿移位采样一个 bit ---
+            if (current_state == S_READ_RESP && sdclk_q == 1'b0 && sdclk == 1'b1) begin
+                resp_reg <= {resp_reg[46:0], sdcmdin};
+                resp_cnt <= resp_cnt - 6'd1;
             end
-            if (next_state == S_READ_RESP) begin
-                resp_reg[47] <= sdcmdin;
-                resp_reg[0] <= 1;
-            end
-            if (current_state == S_READ_RESP && (sdclk_q == '0 && sdclk == '1))begin
-                if (resp_cnt != 0) begin
-                    resp_cnt <= resp_cnt - 1;
-                end
-                resp_reg[resp_cnt] <= sdcmdin;
-            end
-            
+
         end
     end
 
 //--------------------------------------------
-    /*
-    busy,
-    done,
-    timeout,
-    syntaxe,
-    resparg
-    */
     always_comb begin
-        busy = 0; 
-        done = 0;
-        timeout = 0;
-        syntaxe = 0;
-        resparg = '0;
-        sdcmdoe = 0;
-        sdcmdout = 1;
+        busy     = 1'b0;
+        done     = 1'b0;
+        timeout  = 1'b0;
+        syntaxe  = 1'b0;
+        resparg  = '0;
+        sdcmdoe  = 1'b0;
+        sdcmdout = 1'b1;
         next_state = current_state;
-        
+
         case (current_state)
             S_IDLE: begin
-            if (start) begin
-                next_state = S_LOAD_CMD;
-            end
+                if (start)
+                    next_state = S_LOAD_CMD;
             end
 
-            S_LOAD_CMD:begin
-                busy = 1;
-                sdcmdoe = 0;
+            S_LOAD_CMD: begin
+                busy    = 1'b1;
                 next_state = S_SEND_CMD;
             end
 
             S_SEND_CMD: begin
-                busy = 1;
-                sdcmdoe = 1;
+                busy     = 1'b1;
+                sdcmdoe  = 1'b1;
                 sdcmdout = cmd_shift[bit_cnt];
-                if(bit_cnt == 0) begin
+                if (bit_cnt == 6'd0)
                     next_state = S_PRE_WAIT;
-                end
             end
-            
-            S_PRE_WAIT:begin
-                busy = 1;
-                if (precnt_reg == 0) begin
+
+            S_PRE_WAIT: begin
+                busy = 1'b1;
+                if (precnt_reg == '0)
                     next_state = S_WAIT_RESP;
-                end
             end
 
             S_WAIT_RESP: begin
-                busy = 1;
+                busy = 1'b1;
                 if (sdclk_q == 1'b0 && sdclk == 1'b1) begin
-                    if (sdcmdin == 1'b0) begin
+                    if (sdcmdin == 1'b0)
                         next_state = S_READ_RESP;
-                    end
-                    else if (timeout_cnt >= TIMEOUT) begin
+                    else if (timeout_cnt >= TIMEOUT)
                         next_state = S_TIMEOUT;
-                    end
                 end
             end
-            
-            S_READ_RESP:begin
-                busy = 1;
 
-                if (resp_cnt == 0) begin
-                    if (resp_reg[45:40] == cmd) begin
+            S_READ_RESP: begin
+                busy = 1'b1;
+                if (resp_cnt == 6'd0) begin
+                    if (resp_reg[45:40] == cmd_reg)
                         next_state = S_DONE;
-                    end
-                    else next_state = S_ERROR;
-                end
-            end
-            
-            S_DONE: begin
-                done = 1;
-                busy = 0;
-                resparg = resp_reg[39:8];
-                if (start) begin
-                    next_state = S_LOAD_CMD;
+                    else
+                        next_state = S_ERROR;
                 end
             end
 
-            S_ERROR:begin
-                syntaxe = 1;
-                done = 0;
-                busy = 0;
-                if (start) begin
+            S_DONE: begin
+                done    = 1'b1;
+                resparg = resp_reg[39:8];
+                if (start)
                     next_state = S_LOAD_CMD;
-                end
+            end
+
+            S_ERROR: begin
+                syntaxe = 1'b1;
+                if (start)
+                    next_state = S_LOAD_CMD;
             end
 
             S_TIMEOUT: begin
-                timeout = 1;
-                done = 0;
-                busy = 0;
-                if (start) begin
+                timeout = 1'b1;
+                if (start)
                     next_state = S_LOAD_CMD;
-                end
             end
-            
+
             default: begin
-                busy = 0; 
-                done = 0;
-                timeout = 0;
-                syntaxe = 0;
-                resparg = 0;
-                sdcmdoe = 0;
-                sdcmdout = 1;
+                // hold defaults
             end
         endcase
     end
-
-
 
 endmodule
 

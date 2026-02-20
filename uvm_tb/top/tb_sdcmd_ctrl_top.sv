@@ -41,13 +41,13 @@ module tb_sdcmd_ctrl_top;
     // =========================================================================
     // 三态 sdcmd 总线
     // =========================================================================
-    // DUT 驱动: sdcmdoe=1 时，sdcmd = dut_cmd_out
+    // DUT 通过 inout sdcmd 端口直接驱动总线
     // 卡模型驱动: card_oe=1 时，sdcmd = card_cmd_out
     // 均无效时: 通过 pullup 保持高 (tri1)
     tri1 sdcmd_bus;
 
-    assign sdcmd_bus = u_sdcmd_if.sdcmdoe    ? u_sdcmd_if.dut_cmd_out   : 1'bz;
-    assign sdcmd_bus = u_sdcmd_if.card_oe    ? u_sdcmd_if.card_cmd_out  : 1'bz;
+    // 只保留卡模型的驱动，DUT 通过 inout 端口直接驱动总线
+    assign sdcmd_bus = u_sdcmd_if.card_oe ? u_sdcmd_if.card_cmd_out : 1'bz;
     assign u_sdcmd_if.sdcmd_wire = sdcmd_bus;
 
     // DAT 线 (在 Layer 1 仅观测，不传数据)
