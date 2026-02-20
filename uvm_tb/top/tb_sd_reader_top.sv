@@ -97,6 +97,7 @@ module tb_sd_reader_top;
         .RCA_VAL       (32'h0001_0000)
     ) u_card_model (
         .sdclk        (sdclk_dut),
+        .ncr_cycles_dyn(16'd0),
         .sdcmd_obs    (sdcmd_bus),
         .card_cmd_oe  (card_cmd_oe),
         .card_cmd_out (card_cmd_out),

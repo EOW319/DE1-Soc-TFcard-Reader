@@ -88,6 +88,7 @@ module tb_sdcmd_ctrl_top;
         .RCA_VAL       (32'h0001_0000)
     ) u_card_model (
         .sdclk        (u_sdcmd_if.sdclk),
+        .ncr_cycles_dyn(u_sdcmd_if.precnt),
         .sdcmd_obs    (sdcmd_bus),
         .card_cmd_oe  (u_sdcmd_if.card_oe),
         .card_cmd_out (u_sdcmd_if.card_cmd_out),

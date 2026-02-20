@@ -33,6 +33,7 @@ module sd_card_model #(
     parameter int RCA_VAL       = 32'h0001_0000   // 相对卡地址
 ) (
     input  logic        sdclk,
+    input  logic [15:0] ncr_cycles_dyn, // 动态 Ncr，非 0 时覆盖 NCR_CYCLES
     // CMD 三态: 观测 + 驱动
     input  logic        sdcmd_obs,      // CMD 线观测 (来自三态仲裁结果)
     output logic        card_cmd_oe,    // 卡侧 CMD 输出使能
@@ -105,6 +106,7 @@ module sd_card_model #(
                 logic [5:0]  cmd_idx;
                 logic [31:0] arg;
                 logic [6:0]  crc7_rx;
+                int unsigned wait_ncr;
                 
                 for (int i = 47; i >= 0; i--) begin
                     @(posedge sdclk);
@@ -117,7 +119,8 @@ module sd_card_model #(
                 crc7_rx = frame[7:1];
 
                 // 等待 Ncr 周期
-                repeat (NCR_CYCLES) @(posedge sdclk);
+                wait_ncr = (ncr_cycles_dyn != 16'd0) ? ncr_cycles_dyn : NCR_CYCLES;
+                repeat (wait_ncr) @(posedge sdclk);
 
                 if (!inject_timeout)
                     dispatch_response(cmd_idx, arg, frame);
@@ -142,7 +145,9 @@ module sd_card_model #(
             6'd16: send_r1(cmd_idx, 32'h0);
             6'd17: begin
                        send_r1(cmd_idx, 32'h0);
-                       send_data_block(arg);   // arg = 扇区地址
+                       fork
+                           send_data_block(arg);   // arg = 扇区地址
+                       join_none
                    end
             6'd41: begin
                        // ACMD41 (需在 CMD55 后)

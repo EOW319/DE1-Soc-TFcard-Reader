@@ -127,12 +127,54 @@ class sdcmd_rand_seq extends uvm_sequence #(sdcmd_txn);
             start_item(txn);
             if (!txn.randomize())
                 `uvm_fatal("SEQ", "sdcmd_txn randomize() failed")
-            txn.expect_timeout = 0;
+            if (txn.cmd != 0) txn.expect_timeout = 0;
+            else txn.expect_timeout = 1;
             txn.expect_crc_err = 0;
             finish_item(txn);
         end
     endtask
 endclass : sdcmd_rand_seq
+
+// -----------------------------------------------------------------------------
+// Coverage-driven 随机序列
+// - 若提供 bias_cmds，则优先针对未覆盖 cmd 定向 randomize
+// -----------------------------------------------------------------------------
+class sdcmd_covdriven_seq extends uvm_sequence #(sdcmd_txn);
+    `uvm_object_utils(sdcmd_covdriven_seq)
+
+    int unsigned num_txns = 20;
+    bit          use_cmd_bias = 0;
+    int unsigned bias_cmds[$];
+
+    function new(string name = "sdcmd_covdriven_seq");
+        super.new(name);
+    endfunction
+
+    task body();
+        sdcmd_txn txn;
+        int unsigned target_cmd;
+
+        repeat (num_txns) begin
+            txn = sdcmd_txn::type_id::create("txn");
+            start_item(txn);
+
+            if (use_cmd_bias && bias_cmds.size() > 0) begin
+                target_cmd = bias_cmds[$urandom_range(0, bias_cmds.size()-1)];
+                if (!txn.randomize() with { cmd == target_cmd[5:0]; })
+                    `uvm_fatal("SEQ", "sdcmd_txn biased randomize() failed")
+            end else begin
+                if (!txn.randomize())
+                    `uvm_fatal("SEQ", "sdcmd_txn randomize() failed")
+            end
+
+            if (txn.cmd != 0) txn.expect_timeout = 0;
+            else txn.expect_timeout = 1;
+            txn.expect_crc_err = 0;
+
+            finish_item(txn);
+        end
+    endtask
+endclass : sdcmd_covdriven_seq
 
 // -----------------------------------------------------------------------------
 // 错误注入序列

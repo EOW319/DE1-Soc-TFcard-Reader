@@ -10,6 +10,7 @@
 //   sdcmd_crc_error_test — 注入 CRC 错误，验证 syntaxe 路径
 //   sdcmd_r2_test        — CMD2 136-bit 长响应接收
 //   sdcmd_rand_test      — 随机命令 + 覆盖率驱动
+//   sdcmd_covdriven_test — 覆盖率反馈闭环随机测试
 // =============================================================================
 `ifndef SDCMD_TESTS_SV
 `define SDCMD_TESTS_SV
@@ -181,5 +182,49 @@ class sdcmd_rand_test extends sdcmd_base_test;
         `uvm_info("TEST", $sformatf("sdcmd_rand_test: %0d random txns completed", num_txns), UVM_NONE)
     endtask
 endclass : sdcmd_rand_test
+
+// -----------------------------------------------------------------------------
+// Coverage-driven Test: 基于未覆盖 cmd 的反馈闭环
+// -----------------------------------------------------------------------------
+class sdcmd_covdriven_test extends sdcmd_base_test;
+    `uvm_component_utils(sdcmd_covdriven_test)
+
+    int unsigned max_iters       = 10;
+    int unsigned batch_txns      = 20;
+    real         target_cmd_cov  = 100.0;
+
+    function new(string name, uvm_component parent);
+        super.new(name, parent);
+    endfunction
+
+    virtual task run_test_body(uvm_phase phase);
+        sdcmd_covdriven_seq seq;
+        int unsigned unhit_cmds[$];
+        real cmd_cov;
+        real cross_cov;
+
+        for (int i = 0; i < max_iters; i++) begin
+            env.coverage.get_unhit_cmds(unhit_cmds);
+            seq = sdcmd_covdriven_seq::type_id::create($sformatf("seq_iter_%0d", i));
+            seq.num_txns = batch_txns;
+            if (unhit_cmds.size() > 0) begin
+                seq.use_cmd_bias = 1;
+                seq.bias_cmds    = unhit_cmds;
+            end
+            seq.start(env.agent.seqr);
+
+            cmd_cov   = env.coverage.get_cmd_coverage();
+            cross_cov = env.coverage.get_cross_coverage();
+            env.coverage.get_unhit_cmds(unhit_cmds);
+            `uvm_info("TEST", $sformatf("covdriven iter=%0d cmd_cov=%.1f%% cross_cov=%.1f%% unhit_cmds=%0d",
+                      i+1, cmd_cov, cross_cov, unhit_cmds.size()), UVM_NONE)
+
+            if (cmd_cov >= target_cmd_cov)
+                break;
+        end
+
+        `uvm_info("TEST", "sdcmd_covdriven_test completed", UVM_NONE)
+    endtask
+endclass : sdcmd_covdriven_test
 
 `endif // SDCMD_TESTS_SV

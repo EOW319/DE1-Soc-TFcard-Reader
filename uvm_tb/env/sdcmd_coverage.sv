@@ -14,6 +14,9 @@
 class sdcmd_coverage extends uvm_subscriber #(sdcmd_mon_item);
     `uvm_component_utils(sdcmd_coverage)
 
+    localparam int unsigned NUM_CMDS = 9;
+    localparam int unsigned CMD_SET [NUM_CMDS] = '{6'd0, 6'd2, 6'd3, 6'd7, 6'd8, 6'd16, 6'd17, 6'd41, 6'd55};
+
     sdcmd_mon_item item_q[$];  // 暂存 analysis 数据
     sdcmd_txn      txn_q[$];   // 需配合 txn 信息 (通过 config_db 或 second port 传递)
 
@@ -24,6 +27,7 @@ class sdcmd_coverage extends uvm_subscriber #(sdcmd_mon_item);
     bit        cur_done;
     bit        cur_timeout;
     bit        cur_syntaxe;
+    bit        cmd_seen [NUM_CMDS];
 
     // -------------------------------------------------------------------------
     // Covergroups
@@ -86,10 +90,20 @@ class sdcmd_coverage extends uvm_subscriber #(sdcmd_mon_item);
         cg_result = new();
         cg_timing = new();
         cg_cross  = new();
+        foreach (cmd_seen[i]) cmd_seen[i] = 1'b0;
+    endfunction
+
+    function automatic int get_cmd_slot(input bit [5:0] cmd);
+        for (int i = 0; i < NUM_CMDS; i++) begin
+            if (cmd == CMD_SET[i][5:0])
+                return i;
+        end
+        return -1;
     endfunction
 
     // Monitor 发布 mon_item 后调用此函数
     virtual function void write(sdcmd_mon_item t);
+        int cmd_slot;
         cur_done    = t.got_done;
         cur_timeout = t.got_timeout;
         cur_syntaxe = t.got_syntaxe;
@@ -97,10 +111,30 @@ class sdcmd_coverage extends uvm_subscriber #(sdcmd_mon_item);
         cur_clkdiv  = t.clkdiv;
         cur_precnt  = t.precnt;
 
+        cmd_slot = get_cmd_slot(cur_cmd);
+        if (cmd_slot >= 0)
+            cmd_seen[cmd_slot] = 1'b1;
+
         cg_cmd.sample();
         cg_result.sample();
         cg_timing.sample();
         cg_cross.sample();
+    endfunction
+
+    function void get_unhit_cmds(ref int unsigned cmds[$]);
+        cmds.delete();
+        for (int i = 0; i < NUM_CMDS; i++) begin
+            if (!cmd_seen[i])
+                cmds.push_back(CMD_SET[i]);
+        end
+    endfunction
+
+    function real get_cmd_coverage();
+        return cg_cmd.get_coverage();
+    endfunction
+
+    function real get_cross_coverage();
+        return cg_cross.get_coverage();
     endfunction
 
     function void report_phase(uvm_phase phase);
