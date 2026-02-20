@@ -78,6 +78,8 @@ module sdcmd_ctrl (
     logic [7:0] resp_cnt;
     logic [47:0] resp_reg;
     logic [5:0] expected_resp_cmd_idx;
+    logic [6:0] expected_resp_crc7;
+    logic       crc_check_en;
 
     always_comb begin
         unique case (cmd_reg)
@@ -85,6 +87,9 @@ module sdcmd_ctrl (
             default:      expected_resp_cmd_idx = cmd_reg;
         endcase
     end
+
+    assign expected_resp_crc7 = CalcCrc7(resp_reg[47:8]);
+    assign crc_check_en       = (cmd_reg != 6'd2) && (cmd_reg != 6'd41);
 //-----------------------SDCLK divider---------------------
     
     always_ff @(posedge clk) begin : clk_divider
@@ -215,7 +220,8 @@ module sdcmd_ctrl (
             S_READ_RESP: begin
                 busy = 1'b1;
                 if (resp_cnt == 6'd0) begin
-                    if (resp_reg[45:40] == expected_resp_cmd_idx)
+                    if ((resp_reg[45:40] == expected_resp_cmd_idx) &&
+                        (!crc_check_en || (resp_reg[7:1] == expected_resp_crc7)))
                         next_state = S_DONE;
                     else
                         next_state = S_ERROR;
