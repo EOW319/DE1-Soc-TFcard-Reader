@@ -105,11 +105,10 @@ module sd_card_model #(
                 logic [5:0]  cmd_idx;
                 logic [31:0] arg;
                 logic [6:0]  crc7_rx;
-
-                // 在后续 48 个 sdclk 下降沿采样
-                // (DUT 在上升沿更新发送位，下降沿采样可避免边沿竞争)
+                
                 for (int i = 47; i >= 0; i--) begin
-                    @(negedge sdclk);
+                    @(posedge sdclk);
+                    #1step;
                     frame[i] = sdcmd_obs;
                 end
 
@@ -173,7 +172,6 @@ module sd_card_model #(
             @(negedge sdclk);
             card_cmd_out = data[i];
         end
-        @(negedge sdclk);
         card_cmd_out = 1;
         card_cmd_oe  = 0;
     endtask
@@ -208,11 +206,15 @@ module sd_card_model #(
     task automatic send_r1b(input logic [5:0] cmd, input logic [31:0] status);
         send_r1(cmd, status);
         // busy: DAT[0] 拉低 32 个 sdclk
-        card_dat_oe  = 4'h1;
-        card_dat_out = 4'h0;
-        repeat (32) @(posedge sdclk);
-        card_dat_oe  = 4'h0;
-        card_dat_out = 4'hF;
+        fork
+            begin
+                card_dat_oe  = 4'h1;
+                card_dat_out = 4'h0;
+                repeat (32) @(posedge sdclk);
+                card_dat_oe  = 4'h0;
+                card_dat_out = 4'hF;
+            end
+        join_none
     endtask
 
     // R2: 136-bit CID 响应 (无 CRC7 字段，CRC bits 全为 1)
