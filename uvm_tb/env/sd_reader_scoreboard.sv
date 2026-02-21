@@ -17,7 +17,7 @@ class sd_reader_scoreboard extends uvm_scoreboard;
 
     // SD 卡模型 memory 引用 (由 test 通过 config_db 注入)
     // 使用 byte 动态数组表示磁盘镜像
-    byte unsigned card_mem[];
+    logic [7:0] card_mem[];
     int unsigned  total_sectors;
 
     int unsigned pass_cnt;
@@ -32,8 +32,19 @@ class sd_reader_scoreboard extends uvm_scoreboard;
         mon_export = new("mon_export", this);
         pass_cnt   = 0;
         fail_cnt   = 0;
-        // TODO: 从 config_db 获取 card_mem 引用
-        // uvm_config_db #(byte unsigned[])::get(this, "", "card_mem", card_mem);
+        // 从 config_db 获取 card_mem 引用
+        if (!uvm_config_db #(mem_byte_da_t)::get(this, "", "card_mem", card_mem)) begin
+            total_sectors = 0;
+            `uvm_warning("SB", "card_mem not found in config_db; scoreboard byte comparison disabled")
+            return;
+        end
+
+        total_sectors = card_mem.size() / 512;
+        if ((card_mem.size() % 512) != 0)
+            `uvm_warning("SB", $sformatf("card_mem size (%0d) is not a multiple of 512", card_mem.size()))
+
+        `uvm_info("SB", $sformatf("card_mem connected: %0d bytes (%0d sectors)",
+                  card_mem.size(), total_sectors), UVM_LOW)
     endfunction
 
     function void write(sd_reader_mon_item item);

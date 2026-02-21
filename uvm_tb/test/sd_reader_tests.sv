@@ -18,8 +18,7 @@
 class sd_reader_base_test extends uvm_test;
     `uvm_component_utils(sd_reader_base_test)
 
-    // TODO: 创建 sd_reader_env (含 agent + scoreboard)
-    // sd_reader_env env;
+    sd_reader_env env;
 
     function new(string name, uvm_component parent);
         super.new(name, parent);
@@ -27,8 +26,7 @@ class sd_reader_base_test extends uvm_test;
 
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
-        // TODO: env = sd_reader_env::type_id::create("env", this);
-        // TODO: 配置 SD 卡模型 (预加载 FAT32 镜像)
+        env = sd_reader_env::type_id::create("env", this);
     endfunction
 
     task run_phase(uvm_phase phase);
@@ -53,7 +51,8 @@ class sd_reader_init_test extends sd_reader_base_test;
 
     virtual task run_test_body(uvm_phase phase);
         sd_reader_wait_init_seq seq;
-        // TODO: seq.start(env.agent.seqr);
+        seq = sd_reader_wait_init_seq::type_id::create("seq");
+        seq.start(env.agent.seqr);
         `uvm_info("TEST", "sd_reader_init_test: initialization complete verified", UVM_NONE)
     endtask
 endclass : sd_reader_init_test
@@ -73,7 +72,8 @@ class sd_reader_single_read_test extends sd_reader_base_test;
         sd_reader_single_read_seq read_seq;
 
         // 1. 等待初始化
-        // TODO: init_seq.start(env.agent.seqr);
+        init_seq = sd_reader_wait_init_seq::type_id::create("init_seq");
+        init_seq.start(env.agent.seqr);
 
         // 2. 读扇区 0x800 (假设分区起始 LBA)
         read_seq = sd_reader_single_read_seq::type_id::create("read_seq");

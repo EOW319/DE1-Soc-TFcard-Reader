@@ -15,7 +15,7 @@
 `ifndef FAT32_IMAGE_GEN_SV
 `define FAT32_IMAGE_GEN_SV
 
-module fat32_image_gen ();
+package fat32_image_gen;
 
     // =========================================================================
     // 配置参数 (可通过 defparam 或 SV parameter 覆盖)
@@ -29,9 +29,6 @@ module fat32_image_gen ();
     parameter bit        HAS_IMAGE_FILE       = 1;        // 是否写入 IMAGE.BIN
     parameter bit [31:0] FILE_START_CLUSTER   = 32'd3;    // 文件起始簇号
     parameter int        IMAGE_SIZE           = 76800;    // 字节数
-
-    // 指向 sd_card_model 的 mem 引用 (通过层次路径访问)
-    // 在 top_tb 中直接通过 hierarchical reference 调用 write_byte task
 
     // =========================================================================
     // 入口任务
@@ -154,6 +151,8 @@ module fat32_image_gen ();
         int needed_clusters;
         int cluster_size_bytes;
         int entry_base;
+        int cluster_tmp;
+        logic [31:0] val_tmp;
 
         cluster_size_bytes = SECTORS_PER_CLUSTER * 512;
         needed_clusters = (IMAGE_SIZE + cluster_size_bytes - 1) / cluster_size_bytes;
@@ -163,16 +162,24 @@ module fat32_image_gen ();
             mem[fat1_base + i] = 8'h00;
 
         // FAT[0] = 0xFFFFFFF8 (media byte), FAT[1] = 0xFFFFFFFF (reserved)
-        write_fat_entry(mem, fat1_base, 0, 32'hFFFFFFF8);
-        write_fat_entry(mem, fat1_base, 1, 32'hFFFFFFFF);
+        cluster_tmp = 0; val_tmp = 32'hFFFFFFF8;
+        write_fat_entry(mem, fat1_base, cluster_tmp, val_tmp);
+        cluster_tmp = 1; val_tmp = 32'hFFFFFFFF;
+        write_fat_entry(mem, fat1_base, cluster_tmp, val_tmp);
 
         // 根目录簇: ROOT_CLUSTER → EOC
-        write_fat_entry(mem, fat1_base, ROOT_CLUSTER, 32'h0FFFFFFF);
+        cluster_tmp = ROOT_CLUSTER; val_tmp = 32'h0FFFFFFF;
+        write_fat_entry(mem, fat1_base, cluster_tmp, val_tmp);
 
         // 文件簇链 (连续分配)
-        for (int i = 0; i < needed_clusters - 1; i++)
-            write_fat_entry(mem, fat1_base, FILE_START_CLUSTER + i, FILE_START_CLUSTER + i + 1);
-        write_fat_entry(mem, fat1_base, FILE_START_CLUSTER + needed_clusters - 1, 32'h0FFFFFFF);
+        for (int i = 0; i < needed_clusters - 1; i++) begin
+            cluster_tmp = FILE_START_CLUSTER + i;
+            val_tmp = FILE_START_CLUSTER + i + 1;
+            write_fat_entry(mem, fat1_base, cluster_tmp, val_tmp);
+        end
+        cluster_tmp = FILE_START_CLUSTER + needed_clusters - 1;
+        val_tmp = 32'h0FFFFFFF;
+        write_fat_entry(mem, fat1_base, cluster_tmp, val_tmp);
 
         // 如有 FAT2，复制 FAT1
         if (NUM_FATS >= 2) begin
@@ -255,6 +262,6 @@ module fat32_image_gen ();
         end
     endtask
 
-endmodule : fat32_image_gen
+endpackage : fat32_image_gen
 
 `endif // FAT32_IMAGE_GEN_SV

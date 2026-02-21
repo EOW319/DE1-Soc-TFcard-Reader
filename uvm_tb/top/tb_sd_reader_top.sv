@@ -14,6 +14,10 @@
 module tb_sd_reader_top;
     import uvm_pkg::*;
     import sd_reader_pkg::*;
+    import fat32_image_gen::*;
+
+    // 动态数组，用于 FAT32 镜像生成和 scoreboard 引用
+    logic [7:0] card_mem_dyn[];
 
     // =========================================================================
     // 时钟和复位
@@ -33,13 +37,11 @@ module tb_sd_reader_top;
     // =========================================================================
     // sdcmd / sddat 三态总线
     // =========================================================================
-    logic  dut_sdcmdoe;
-    logic  dut_sdcmd_out;
-    logic  card_cmd_oe;
-    logic  card_cmd_out;
-    tri1   sdcmd_bus;
-    assign sdcmd_bus = dut_sdcmdoe  ? dut_sdcmd_out : 1'bz;
-    assign sdcmd_bus = card_cmd_oe  ? card_cmd_out  : 1'bz;
+    logic       card_cmd_oe;
+    logic       card_cmd_out;
+
+    tri1  sdcmd_bus;
+    assign sdcmd_bus = (card_cmd_oe) ? u_if.card_cmd_out : 1'bz;
 
     logic [3:0] card_dat_oe;
     logic [3:0] card_dat_out;
@@ -107,10 +109,17 @@ module tb_sd_reader_top;
 
     // 预加载 FAT32 镜像到 sd_card_model.mem
     initial begin
-        // TODO: fat32_image_gen::generate_image(u_card_model.mem, 4096)
-        // 目前占位: 将扇区 0 标记为有效 MBR
-        u_card_model.mem[510] = 8'h55;
-        u_card_model.mem[511] = 8'hAA;
+        // sd_card_model.mem 是固定大小数组，generate_image 需要动态数组 ref
+        // 因此先用模块级动态数组生成镜像，再复制回固定数组
+        automatic int mem_size = 4096 * 512;
+        card_mem_dyn = new[mem_size];
+        foreach (card_mem_dyn[i]) card_mem_dyn[i] = 8'h00;
+        fat32_image_gen::generate_image(card_mem_dyn, 4096);
+        card_mem_dyn[510] = 8'h55;
+        card_mem_dyn[511] = 8'hAA;
+        // 复制到固定大小的 sd_card_model.mem
+        for (int i = 0; i < mem_size; i++)
+            u_card_model.mem[i] = card_mem_dyn[i];
     end
 
     // =========================================================================
@@ -119,8 +128,8 @@ module tb_sd_reader_top;
     initial begin
         uvm_config_db #(virtual sd_reader_if.host_drv)::set(null, "uvm_test_top.*", "vif", u_if.host_drv);
         uvm_config_db #(virtual sd_reader_if.host_mon)::set(null, "uvm_test_top.*", "vif", u_if.host_mon);
-        // 传递 card_mem 引用给 scoreboard
-        // uvm_config_db #(...)::set(null, "uvm_test_top.*", "card_mem", u_card_model.mem);
+        // 传递 card_mem 动态数组引用给 scoreboard
+        uvm_config_db #(mem_byte_da_t)::set(null, "uvm_test_top.*", "card_mem", card_mem_dyn);
 
         run_test();
     end
