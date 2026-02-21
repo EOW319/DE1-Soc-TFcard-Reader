@@ -14,13 +14,12 @@
 // Transaction: sd_reader_txn
 // -----------------------------------------------------------------------------
 class sd_reader_txn extends uvm_sequence_item;
-    `uvm_object_utils_begin(sd_reader_txn)
-        `uvm_field_int(sector,     UVM_ALL_ON)
-        `uvm_field_int(wait_init,  UVM_ALL_ON)
-    `uvm_object_utils_end
 
     rand bit [31:0] sector;      // 目标扇区地址
-    bit             wait_init;   // 若为 1，等待 rbusy=0 后再发 rstart (初始化完成)
+
+    `uvm_object_utils_begin(sd_reader_txn)
+        `uvm_field_int(sector,     UVM_ALL_ON)
+    `uvm_object_utils_end
 
     constraint c_sector { sector inside {[32'h0 : 32'h0000_FFFF]}; }  // 调整范围按需
 
@@ -34,17 +33,17 @@ endclass : sd_reader_txn
 // 一次扇区读取的完整结果
 // -----------------------------------------------------------------------------
 class sd_reader_mon_item extends uvm_sequence_item;
+    bit [31:0] sector;
+    byte       data[512];    // 512 字节扇区数据
+    int        byte_count;   // 实际接收字节数
+    bit        got_rdone;
+
     `uvm_object_utils_begin(sd_reader_mon_item)
         `uvm_field_int(sector,       UVM_ALL_ON)
         `uvm_field_sarray_int(data,  UVM_ALL_ON)
         `uvm_field_int(byte_count,   UVM_ALL_ON)
         `uvm_field_int(got_rdone,    UVM_ALL_ON)
     `uvm_object_utils_end
-
-    bit [31:0] sector;
-    byte       data[512];    // 512 字节扇区数据
-    int        byte_count;   // 实际接收字节数
-    bit        got_rdone;
 
     function new(string name = "sd_reader_mon_item");
         super.new(name);
@@ -81,12 +80,7 @@ class sd_reader_host_driver extends uvm_driver #(sd_reader_txn);
     endtask
 
     task automatic drive_txn(sd_reader_txn txn);
-        // 若 wait_init=1，等待初始化完成 (rbusy=0)
-        if (txn.wait_init) begin
-            wait (!vif.rbusy);
-            @(posedge vif.clk);
-        end
-        // 等待 rbusy=0 (上一次读取完成)
+        // 等待 rbusy=0 (初始化完成 / 上一次读取完成)
         while (vif.rbusy) @(posedge vif.clk);
 
         vif.rsector <= txn.sector;
@@ -122,14 +116,28 @@ class sd_reader_host_monitor extends uvm_monitor;
     endfunction
 
     task run_phase(uvm_phase phase);
-        // TODO: 实现字节流收集
-        // 步骤:
-        //   1. 等待 rstart 上升沿，记录 rsector
-        //   2. 在每个 outen 脉冲上采样 outbyte，填入 data[]
-        //   3. 收集 512 字节后等待 rdone
-        //   4. 构建 sd_reader_mon_item 并 ap.write()
-        `uvm_info("MON", "sd_reader_host_monitor run_phase started (TODO: implement byte stream capture)", UVM_MEDIUM)
-        forever @(posedge vif.clk);
+        sd_reader_mon_item item;
+        `uvm_info("MON", "sd_reader_host_monitor run_phase started", UVM_MEDIUM)
+
+        forever begin
+            @(posedge vif.clk iff vif.rstart);
+            item = sd_reader_mon_item::type_id::create("mon_item");
+            item.sector     = vif.rsector;
+            item.byte_count = 0;
+            item.got_rdone  = 0;
+
+            while (!vif.rdone) begin
+                @(posedge vif.clk);
+                if (vif.outen && item.byte_count < 512) begin
+                    item.data[item.byte_count] = vif.outbyte;
+                    item.byte_count++;
+                end
+            end
+
+            item.got_rdone = 1;
+            `uvm_info("MON", $sformatf("Sector 0x%08X: captured %0d bytes", item.sector, item.byte_count), UVM_HIGH)
+            ap.write(item);
+        end
     endtask
 endclass : sd_reader_host_monitor
 

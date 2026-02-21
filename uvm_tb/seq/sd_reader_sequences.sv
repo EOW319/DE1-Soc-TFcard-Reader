@@ -22,11 +22,10 @@ class sd_reader_wait_init_seq extends uvm_sequence #(sd_reader_txn);
 
     task body();
         sd_reader_txn txn;
-        // 发一个 wait_init=1 的特殊 txn，sector 为 0 (driver 会等待 rbusy=0 后返回)
+        // 发一个 sector=0 的 txn，driver 会先等待 rbusy=0 (即初始化完成) 再驱动
         txn = sd_reader_txn::type_id::create("txn_init");
         start_item(txn);
-        txn.sector     = 32'h0;
-        txn.wait_init  = 1'b1;
+        txn.sector = 32'h0;
         finish_item(txn);
         `uvm_info("SEQ", "SD reader initialization complete (rbusy=0)", UVM_MEDIUM)
     endtask
@@ -48,8 +47,7 @@ class sd_reader_single_read_seq extends uvm_sequence #(sd_reader_txn);
         sd_reader_txn txn;
         txn = sd_reader_txn::type_id::create("txn_read");
         start_item(txn);
-        txn.sector    = target_sector;
-        txn.wait_init = 1'b0;
+        txn.sector = target_sector;
         finish_item(txn);
         `uvm_info("SEQ", $sformatf("Single read sector=0x%08X done", target_sector), UVM_MEDIUM)
     endtask
@@ -75,8 +73,7 @@ class sd_reader_multi_read_seq extends uvm_sequence #(sd_reader_txn);
         for (int i = 0; i < num_sectors; i++) begin
             txn = sd_reader_txn::type_id::create($sformatf("txn_read_%0d", i));
             start_item(txn);
-            txn.sector    = start_sector + i;
-            txn.wait_init = 1'b0;
+            txn.sector = start_sector + i;
             finish_item(txn);
             `uvm_info("SEQ", $sformatf("Multi read [%0d]: sector=0x%08X", i, txn.sector), UVM_HIGH)
         end
