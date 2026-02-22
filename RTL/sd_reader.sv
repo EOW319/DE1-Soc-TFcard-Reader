@@ -201,20 +201,18 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
 
                 CMD17: begin
                     // Idle state waiting for read request
-                    if (rstart) begin
-                        if (cmd_step == 0) begin
+                    if (cmd_step == 0) begin
+                        if (rstart) begin
                             set_cmd(1, (SIMULATE?sim_wait:real_wait), 17, rsector);
                             rbusy <= 1;
-                            // rdone handled by data logic
                             cmd_step <= 1;
-                        end else if (cmd_step == 2 && done) begin
-                             // Command sent, now wait for data
-                             sdcmd_stat <= READING;
-                             cmd_step <= 0;
+                        end else begin
+                            rbusy <= 0;
                         end
-                    end else begin
-                        cmd_step <= 0;
-                        rbusy <= 0;
+                    end else if (cmd_step == 2 && done) begin
+                         // Command sent, now wait for data
+                         sdcmd_stat <= READING;
+                         cmd_step <= 0;
                     end
                 end
 
