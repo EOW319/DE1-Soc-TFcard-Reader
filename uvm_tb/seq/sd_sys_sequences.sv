@@ -10,18 +10,18 @@
 
 // 系统级 txn (控制卡模型配置，无需实际驱动 DUT 输入)
 class sd_sys_txn extends uvm_sequence_item;
+    bit        has_image_file      = 1;    // 卡内是否存在 IMAGE.BIN
+    bit [7:0]  sectors_per_cluster = 8'd8; // FAT32 BPB 参数
+    bit [31:0] partition_start_lba = 32'h800;
+    bit [15:0] reserved_sectors    = 16'd32;
+
     `uvm_object_utils_begin(sd_sys_txn)
         `uvm_field_int(has_image_file,       UVM_ALL_ON)
         `uvm_field_int(sectors_per_cluster,  UVM_ALL_ON)
         `uvm_field_int(partition_start_lba,  UVM_ALL_ON)
         `uvm_field_int(reserved_sectors,     UVM_ALL_ON)
     `uvm_object_utils_end
-
-    bit        has_image_file      = 1;    // 卡内是否存在 IMAGE.BIN
-    bit [7:0]  sectors_per_cluster = 8'd8; // FAT32 BPB 参数
-    bit [31:0] partition_start_lba = 32'h800;
-    bit [15:0] reserved_sectors    = 16'd32;
-
+    
     function new(string name = "sd_sys_txn");
         super.new(name);
     endfunction

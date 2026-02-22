@@ -24,18 +24,16 @@ module top_sd_vga (
 );
 
     // Internal Signals
-    logic        clk_25;
+    logic        clk_25 = 1'b0;
     logic        rst_n;
     assign rst_n = KEY[0];
     assign SD_CD = 1'b0; // Assume SD card is always present for simplicity
     
     // Clock Generation: 50MHz -> 25MHz
-    always_ff @(posedge CLOCK_50 or negedge rst_n) begin
-        if (!rst_n) begin
-            clk_25 <= 0;
-        end else begin
-            clk_25 <= ~clk_25;
-        end
+    // Keep divider running during reset so submodules with synchronous reset
+    // still receive clock edges while rst_n is low.
+    always_ff @(posedge CLOCK_50) begin
+        clk_25 <= ~clk_25;
     end
 
     // SD Reader Interface Signals
@@ -56,7 +54,7 @@ module top_sd_vga (
     
     // SD Reader Module
     // Note: Assuming SD_DAT[0] is the data line from card
-    sd_reader #(.CLK_DIV(3'd0), .SIMULATE(0)) u_sd_reader (
+    sd_reader #(.CLK_DIV(3'd0), .SIMULATE(1)) u_sd_reader (
         .clk(clk_25),
         .rst_n(rst_n),
         .rstart(sd_rstart),

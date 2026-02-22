@@ -38,7 +38,6 @@ module tb_sd_sys_top;
     // SD 总线
     // =========================================================================
     logic        SD_CLK;
-    wire         SD_CMD;
     wire  [3:0]  SD_DAT;
     logic        SD_CD;
 
@@ -48,11 +47,9 @@ module tb_sd_sys_top;
     logic [3:0]  card_dat_oe;
     logic [3:0]  card_dat_out;
 
-    // CMD 三态
-    logic        dut_sdcmdoe;
+    // CMD 三态 (DUT 通过 inout 端口直接驱动 SD_CMD_bus)
     tri1         SD_CMD_bus;
-    assign SD_CMD_bus = dut_sdcmdoe   ? SD_CMD  : 1'bz;
-    assign SD_CMD_bus = card_cmd_oe   ? card_cmd_out : 1'bz;
+    assign SD_CMD_bus = card_cmd_oe ? card_cmd_out : 1'bz;
 
     // DAT 三态
     tri1 [3:0]   SD_DAT_bus;
@@ -132,7 +129,7 @@ module tb_sd_sys_top;
         .RCA_VAL       (32'h0001_0000)
     ) u_card_model (
         .sdclk        (SD_CLK),
-        .ncr_cycles_dyn(16'd0),
+        .ncr_cycles_dyn(16'd80),
         .sdcmd_obs    (SD_CMD_bus),
         .card_cmd_oe  (card_cmd_oe),
         .card_cmd_out (card_cmd_out),
@@ -142,17 +139,16 @@ module tb_sd_sys_top;
 
     // 预加载 FAT32 镜像 (由 fat32_image_gen 生成)
     initial begin
-        // TODO: fat32_image_gen::generate_image(u_card_model.mem, 8192, 1)
-        // 待 fat32_image_gen 集成后替换此行
-        $display("[SYS_TB] SD card model initialized, waiting for DUT to start...");
+        //fat32_image_gen::generate_image(u_card_model.mem, 8192, 1);
+        $display("[SYS_TB] SD card model initialized with FAT32 image, waiting for DUT to start...");
     end
 
     // =========================================================================
     // UVM 配置与启动
     // =========================================================================
     initial begin
-        uvm_config_db #(virtual sd_sys_if.vga_mon)::set(null,  "uvm_test_top.*", "vif_vga",   u_sys_if.vga_mon);
-        uvm_config_db #(virtual sd_sys_if.fat32_mon)::set(null, "uvm_test_top.*", "vif_fat32", u_sys_if.fat32_mon);
+        uvm_config_db #(virtual sd_sys_if.vga_mon)::set(null,  "uvm_test_top*", "vif_vga",   u_sys_if.vga_mon);
+        uvm_config_db #(virtual sd_sys_if.fat32_mon)::set(null, "uvm_test_top*", "vif_fat32", u_sys_if.fat32_mon);
         run_test();
     end
 

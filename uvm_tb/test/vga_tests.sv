@@ -12,28 +12,24 @@
 
 // -----------------------------------------------------------------------------
 // VGA 时序期望参数 (640×480@60Hz)
-// -----------------------------------------------------------------------------
 // H_TOTAL    = 800,  H_VISIBLE = 640
 // H_FRONT    = 16,   H_SYNC    = 96,   H_BACK = 48
 // V_TOTAL    = 525,  V_VISIBLE = 480
 // V_FRONT    = 10,   V_SYNC    = 2,    V_BACK = 33
 // PIXEL_CLK  = 25 MHz
 
-package vga_timing_pkg;
-    // 水平时序 (像素数)
-    localparam int H_VISIBLE = 640;
-    localparam int H_FRONT   = 16;
-    localparam int H_SYNC    = 96;
-    localparam int H_BACK    = 48;
-    localparam int H_TOTAL   = H_VISIBLE + H_FRONT + H_SYNC + H_BACK; // 800
+// 时序常量 (用于 test 内检查，与 vga_monitor 中一致)
+localparam int VGA_H_VISIBLE = 640;
+localparam int VGA_H_FRONT   = 16;
+localparam int VGA_H_SYNC    = 96;
+localparam int VGA_H_BACK    = 48;
+localparam int VGA_H_TOTAL   = VGA_H_VISIBLE + VGA_H_FRONT + VGA_H_SYNC + VGA_H_BACK;
 
-    // 垂直时序 (行数)
-    localparam int V_VISIBLE = 480;
-    localparam int V_FRONT   = 10;
-    localparam int V_SYNC    = 2;
-    localparam int V_BACK    = 33;
-    localparam int V_TOTAL   = V_VISIBLE + V_FRONT + V_SYNC + V_BACK; // 525
-endpackage
+localparam int VGA_V_VISIBLE = 480;
+localparam int VGA_V_FRONT   = 10;
+localparam int VGA_V_SYNC    = 2;
+localparam int VGA_V_BACK    = 33;
+localparam int VGA_V_TOTAL   = VGA_V_VISIBLE + VGA_V_FRONT + VGA_V_SYNC + VGA_V_BACK;
 
 // -----------------------------------------------------------------------------
 // 基础 Test

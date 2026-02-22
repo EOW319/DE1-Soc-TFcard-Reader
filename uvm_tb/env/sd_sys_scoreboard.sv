@@ -47,6 +47,7 @@ class fat32_scoreboard extends uvm_scoreboard;
     int unsigned fail_cnt;
     bit          file_found_seen;
     bit          read_done_seen;
+    bit          ref_image_valid;    // test 注入 ref_image 后置 1
 
     function new(string name, uvm_component parent);
         super.new(name, parent);
@@ -58,6 +59,7 @@ class fat32_scoreboard extends uvm_scoreboard;
         fail_cnt          = 0;
         file_found_seen   = 0;
         read_done_seen    = 0;
+        ref_image_valid   = 0;
         foreach (written[i]) written[i] = 0;
     endfunction
 
@@ -77,7 +79,7 @@ class fat32_scoreboard extends uvm_scoreboard;
         int mismatch = 0;
         int not_written = 0;
 
-        if (ref_image.size() == 0) begin
+        if (!ref_image_valid) begin
             `uvm_warning("FAT32SB", "ref_image not set, skipping comparison")
             return;
         end
@@ -122,6 +124,7 @@ class vga_frame_scoreboard extends uvm_scoreboard;
     byte unsigned ref_image[76800];  // IMAGE.BIN 参考 (由 test 注入)
     int unsigned  frame_cnt;
     int unsigned  fail_cnt;
+    bit           ref_image_valid;    // test 注入 ref_image 后置 1
 
     function new(string name, uvm_component parent);
         super.new(name, parent);
@@ -132,13 +135,14 @@ class vga_frame_scoreboard extends uvm_scoreboard;
         vga_mon_export = new("vga_mon_export", this);
         frame_cnt = 0;
         fail_cnt  = 0;
+        ref_image_valid = 0;
     endfunction
 
     function void write(vga_frame_item item);
         int mismatch = 0;
         frame_cnt++;
 
-        if (ref_image.size() == 0) begin
+        if (!ref_image_valid) begin
             `uvm_warning("VGASB", "ref_image not set, skipping pixel comparison")
             return;
         end

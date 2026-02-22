@@ -21,7 +21,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     inout wire sdcmd
 );
     localparam sim_wait = 64; // Number of cycles to wait for initialization in SIMULATE mode
-    localparam real_wait = 64000;
+    localparam real_wait = 640;
     logic [15:0] precnt;
     logic [15:0] clkdiv;
     logic [15:0] cmd;
