@@ -126,6 +126,9 @@ class sd_reader_host_monitor extends uvm_monitor;
             item.byte_count = 0;
             item.got_rdone  = 0;
 
+            // Wait for rdone to deassert first (avoid stale rdone from previous read)
+            while (vif.rdone) @(posedge vif.clk);
+
             while (!vif.rdone) begin
                 @(posedge vif.clk);
                 if (vif.outen && item.byte_count < 512) begin
