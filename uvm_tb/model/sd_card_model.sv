@@ -29,7 +29,7 @@
 
 module sd_card_model #(
     parameter int TOTAL_SECTORS = 4096,          // 磁盘总扇区数
-    parameter int NCR_CYCLES    = 64,              // 命令到响应延迟 (sdclk 周期)
+    parameter int NCR_CYCLES    = 50,              // 命令到响应延迟 (sdclk 周期)
     parameter int RCA_VAL       = 32'h0001_0000   // 相对卡地址
 ) (
     input  logic        sdclk,

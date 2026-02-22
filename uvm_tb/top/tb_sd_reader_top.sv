@@ -95,7 +95,7 @@ module tb_sd_reader_top;
     // =========================================================================
     sd_card_model #(
         .TOTAL_SECTORS (4096),
-        .NCR_CYCLES    (8),
+        .NCR_CYCLES    (80),
         .RCA_VAL       (32'h0001_0000)
     ) u_card_model (
         .sdclk        (sdclk_dut),
