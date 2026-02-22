@@ -126,6 +126,33 @@ module tb_sd_reader_top;
     // UVM 配置与启动
     // =========================================================================
     initial begin
+        bit inject_timeout_cfg;
+        bit inject_crc_error_cfg;
+        bit inject_wrong_cmd_cfg;
+        int acmd41_busy_rounds_cfg;
+
+        @(posedge rst_n);
+
+        if (!uvm_config_db #(bit)::get(null, "uvm_test_top", "inject_timeout", inject_timeout_cfg))
+            inject_timeout_cfg = 1'b0;
+        if (!uvm_config_db #(bit)::get(null, "uvm_test_top", "inject_crc_error", inject_crc_error_cfg))
+            inject_crc_error_cfg = 1'b0;
+        if (!uvm_config_db #(bit)::get(null, "uvm_test_top", "inject_wrong_cmd", inject_wrong_cmd_cfg))
+            inject_wrong_cmd_cfg = 1'b0;
+        if (!uvm_config_db #(int)::get(null, "uvm_test_top", "acmd41_busy_rounds", acmd41_busy_rounds_cfg))
+            acmd41_busy_rounds_cfg = 0;
+
+        u_card_model.acmd41_busy_rounds = (acmd41_busy_rounds_cfg < 0) ? 0 : acmd41_busy_rounds_cfg;
+        u_card_model.inject_timeout     = inject_timeout_cfg;
+        u_card_model.inject_crc_error   = inject_crc_error_cfg;
+        u_card_model.inject_wrong_cmd   = inject_wrong_cmd_cfg;
+
+        `uvm_info("TB_CFG", $sformatf("card_model cfg: acmd41_busy_rounds=%0d timeout=%0b crc_error=%0b wrong_cmd=%0b",
+                  u_card_model.acmd41_busy_rounds, u_card_model.inject_timeout,
+                  u_card_model.inject_crc_error, u_card_model.inject_wrong_cmd), UVM_LOW)
+    end
+
+    initial begin
         uvm_config_db #(virtual sd_reader_if.host_drv)::set(null, "uvm_test_top.*", "vif", u_if.host_drv);
         uvm_config_db #(virtual sd_reader_if.host_mon)::set(null, "uvm_test_top.*", "vif", u_if.host_mon);
         // 传递 card_mem 动态数组引用给 scoreboard
