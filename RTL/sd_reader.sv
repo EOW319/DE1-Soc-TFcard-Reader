@@ -13,6 +13,9 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     output logic rbusy,
     output logic outen,
     output logic [7:0] outbyte,
+    output logic debug_syntaxe,
+    output logic debug_timeout,
+
 
     output logic sdclk,
 
@@ -59,6 +62,9 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     .resparg(resparg),
     .sdcmdoe(sdcmdoe)
     );
+
+    assign debug_syntaxe = syntaxe;
+    assign debug_timeout = timeout;
 
     task set_cmd;
         input [ 0:0] _start;

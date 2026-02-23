@@ -45,6 +45,8 @@ module top_sd_vga (
     logic [7:0]  sd_outbyte;
     logic        sd_clk_out;
     
+    logic debug_syntaxe;
+    logic debug_timeout;
     // SD Card Physical Interface Wiring
     assign SD_CLK = sd_clk_out;
     // SD_DAT[0] is input (MISO/Data0)
@@ -54,7 +56,7 @@ module top_sd_vga (
     
     // SD Reader Module
     // Note: Assuming SD_DAT[0] is the data line from card
-    sd_reader #(.CLK_DIV(3'd2), .SIMULATE(1)) u_sd_reader (
+    sd_reader #(.CLK_DIV(3'd2), .SIMULATE(0)) u_sd_reader (
         .clk(clk_25),
         .rst_n(rst_n),
         .rstart(sd_rstart),
@@ -65,7 +67,9 @@ module top_sd_vga (
         .outbyte(sd_outbyte),
         .sdclk(sd_clk_out),
         .sddata0(SD_DAT[0]),
-        .sdcmd(SD_CMD)
+        .sdcmd(SD_CMD),
+        .debug_syntaxe(debug_syntaxe),
+        .debug_timeout(debug_timeout)
     );
 
     // RAM Interface
@@ -128,7 +132,10 @@ module top_sd_vga (
     assign LEDR[1] = read_done;
     assign LEDR[2] = sd_rbusy;
     assign LEDR[3] = sd_rdone;
-    assign LEDR[9:4] = 6'd0;
+    assign LEDR[4] = 1'b0;
+    assign LEDR[5] = debug_syntaxe;
+    assign LEDR[6] = debug_timeout;
+    assign LEDR[9:7] = 3'b0;
     
 
     // 7-segment display for state
