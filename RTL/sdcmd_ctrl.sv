@@ -100,7 +100,7 @@ module sdcmd_ctrl (
         end
         else begin
             sdclk_q <= sdclk;
-            if (clkcnt == clkdiv) begin
+            if (clkcnt >= clkdiv) begin
                 clkcnt <= 16'd0;
                 sdclk  <= ~sdclk;
             end else begin
