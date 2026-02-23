@@ -200,7 +200,9 @@ module sd_file_reader (
                         end
                         
                         // At end of filename (offset 11), check match
-                        if ((byte_cnt & 31) == 11) begin
+                        // Guard: only latch file_found once; prevents subsequent
+                        // directory entries from overwriting the cluster number.
+                        if (!file_found && (byte_cnt & 31) == 11) begin
                             if (!match_fail && outbyte != 8'h0F && outbyte != 8'hE5 && outbyte != 8'h00) begin 
                                 // Match found! Capture cluster
                                 // 0F is LFN, E5 is deleted, 00 is empty
@@ -208,8 +210,13 @@ module sd_file_reader (
                             end
                         end
                         
-                        // Capture Cluster info if match found
-                        if (file_found) begin
+                        // Capture Cluster info only in the SAME entry where match occurred
+                        // file_found was just set at offset 11 of this entry, so offsets
+                        // 20/21/26/27 of this same entry will see file_found==1.
+                        // For all later entries, file_found is already 1 but match_fail
+                        // would be set — however the simplest guard is to stop matching
+                        // once file_found is latched AND we've left the current entry.
+                        if (file_found && !match_fail) begin
                             if ((byte_cnt & 31) == 20) file_start_cluster[23:16] <= outbyte;
                             if ((byte_cnt & 31) == 21) file_start_cluster[31:24] <= outbyte;
                             if ((byte_cnt & 31) == 26) file_start_cluster[7:0] <= outbyte;

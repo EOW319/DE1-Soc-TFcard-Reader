@@ -256,6 +256,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
             rdone <= 0; // rdone is also used in the state machine above
         end else begin
             outen <= 0; // Default
+            rdone <= 0; // Default: single-cycle pulse (prevents stale rdone leaking across states)
             
             // Only active when main state machine is in READING
             if (sdcmd_stat == READING) begin
