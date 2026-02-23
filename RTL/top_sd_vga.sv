@@ -54,7 +54,7 @@ module top_sd_vga (
     
     // SD Reader Module
     // Note: Assuming SD_DAT[0] is the data line from card
-    sd_reader #(.CLK_DIV(3'd0), .SIMULATE(1)) u_sd_reader (
+    sd_reader #(.CLK_DIV(3'd2), .SIMULATE(1)) u_sd_reader (
         .clk(clk_25),
         .rst_n(rst_n),
         .rstart(sd_rstart),

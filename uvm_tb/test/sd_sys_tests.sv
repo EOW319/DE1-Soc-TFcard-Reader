@@ -90,23 +90,23 @@ class sys_base_test extends uvm_test;
     endtask
 
     // 等待 read_done 上升沿，或超时报错
-    task wait_read_done(input int unsigned timeout_ns = 50_000_000);
-        `uvm_info("TEST", $sformatf("Waiting for read_done (timeout=%0dns)...", timeout_ns), UVM_MEDIUM)
+    task wait_read_done(input time timeout = 50ms);
+        `uvm_info("TEST", $sformatf("Waiting for read_done (timeout=%0t)...", timeout), UVM_MEDIUM)
         fork : wait_or_timeout
             begin
                 @(posedge vif_fat32.read_done);
                 `uvm_info("TEST", "read_done asserted", UVM_MEDIUM)
             end
             begin
-                #(timeout_ns);
-                `uvm_error("TEST", $sformatf("TIMEOUT: read_done not asserted within %0dns", timeout_ns))
+                #(timeout);
+                `uvm_error("TEST", $sformatf("TIMEOUT: read_done not asserted within %0t", timeout))
             end
         join_any
         disable wait_or_timeout;
     endtask
 
     // 等待 file_found 上升沿，或超时
-    task wait_file_found(input int unsigned timeout_ns = 50_000_000);
+    task wait_file_found(input time timeout = 50ms);
         `uvm_info("TEST", "Waiting for file_found...", UVM_MEDIUM)
         fork : wait_ff
             begin
@@ -114,7 +114,7 @@ class sys_base_test extends uvm_test;
                 `uvm_info("TEST", "file_found asserted", UVM_MEDIUM)
             end
             begin
-                #(timeout_ns);
+                #(timeout);
                 `uvm_info("TEST", "file_found not asserted (may be expected)", UVM_MEDIUM)
             end
         join_any
@@ -148,7 +148,7 @@ class sys_normal_test extends sys_base_test;
 
     virtual task run_test_body(uvm_phase phase);
         // 等待 FAT32 文件读取完成
-        wait_read_done(100_000_000);  // 100ms timeout
+        wait_read_done(3s);  // 3s timeout
 
         // 检查 file_found 已被置位
         if (!vif_fat32.file_found)

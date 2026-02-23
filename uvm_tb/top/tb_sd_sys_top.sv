@@ -14,6 +14,7 @@
 module tb_sd_sys_top;
     import uvm_pkg::*;
     import sd_sys_pkg::*;
+    import fat32_image_gen::*;
 
     // =========================================================================
     // 时钟和复位
@@ -137,10 +138,19 @@ module tb_sd_sys_top;
         .card_dat_out (card_dat_out)
     );
 
-    // 预加载 FAT32 镜像 (由 fat32_image_gen 生成)
+    // 预加载 FAT32 镜像到 sd_card_model.mem
+    logic [7:0] card_mem_dyn [];
     initial begin
-        //fat32_image_gen::generate_image(u_card_model.mem, 8192, 1);
-        $display("[SYS_TB] SD card model initialized with FAT32 image, waiting for DUT to start...");
+        automatic int mem_size = 8192 * 512;
+        card_mem_dyn = new[mem_size];
+        foreach (card_mem_dyn[i]) card_mem_dyn[i] = 8'h00;
+        fat32_image_gen::generate_image(card_mem_dyn, 8192);
+        card_mem_dyn[510] = 8'h55;  // MBR boot signature
+        card_mem_dyn[511] = 8'hAA;
+        // 复制到固定大小的 sd_card_model.mem
+        for (int i = 0; i < mem_size; i++)
+            u_card_model.mem[i] = card_mem_dyn[i];
+        $display("[SYS_TB] SD card model initialized with FAT32 image (%0d bytes)", mem_size);
     end
 
     // =========================================================================
@@ -156,8 +166,8 @@ module tb_sd_sys_top;
     // 超时看门狗 (系统级仿真时间较长)
     // =========================================================================
     initial begin
-        #200_000_000;  // 200ms
-        `uvm_fatal("TIMEOUT", "sys tb timeout: 200ms exceeded")
+        #(64'd10_000_000_000);  // 10000ms (10s)
+        `uvm_fatal("TIMEOUT", "sys tb timeout: 10000ms (10s) exceeded")
     end
 
     initial begin
