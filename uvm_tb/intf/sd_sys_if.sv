@@ -23,6 +23,7 @@ interface sd_sys_if (
     logic [7:0]  vga_r;
     logic [7:0]  vga_g;
     logic [7:0]  vga_b;
+    logic        preload_done;
 
     // -------------------------------------------------------------------------
     // img_ram 写接口观测 (sd_file_reader → img_ram，FAT32 Scoreboard 用)
@@ -43,6 +44,7 @@ interface sd_sys_if (
 
     // VGA Monitor (passive): 只读 VGA 信号
     modport vga_mon (
+        input  rst_n, preload_done,
         input  vga_clk, vga_hs, vga_vs,
         input  vga_blank_n, vga_sync_n,
         input  vga_r, vga_g, vga_b

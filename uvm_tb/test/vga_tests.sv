@@ -39,6 +39,7 @@ class vga_base_test extends uvm_test;
 
     // img_ram 预加载数据 (待写入 DUT 的 img_ram)
     byte unsigned test_image[76800];  // 320×240 测试图案
+    virtual sd_sys_if.vga_mon vif_vga;
 
     function new(string name, uvm_component parent);
         super.new(name, parent);
@@ -46,12 +47,14 @@ class vga_base_test extends uvm_test;
 
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
+        if (!uvm_config_db#(virtual sd_sys_if.vga_mon)::get(this, "", "vif_vga", vif_vga))
+            `uvm_fatal("VGA_TEST", "Failed to get vif_vga")
+
         // 生成测试图案:
         //   - 渐变色: test_image[i] = i % 256
         //   - 棋盘格: test_image[i] = ((i/320 + i%320) % 2) ? 8'hFF : 8'h00
         foreach (test_image[i])
             test_image[i] = i % 256;  // 默认: 渐变色
-        // TODO: 通过 config_db 将 test_image 传给 tb_vga_top 预加载 img_ram
     endfunction
 
     task run_phase(uvm_phase phase);
@@ -61,6 +64,110 @@ class vga_base_test extends uvm_test;
     endtask
 
     virtual task run_test_body(uvm_phase phase);
+    endtask
+
+    task wait_until_ready();
+        wait (vif_vga.rst_n === 1'b1);
+        wait (vif_vga.preload_done === 1'b1);
+        repeat (4) @(posedge vif_vga.vga_clk);
+    endtask
+
+    task wait_visible_frame_start();
+        wait_until_ready();
+
+        @(negedge vif_vga.vga_vs);
+        @(posedge vif_vga.vga_vs);
+
+        forever begin
+            @(posedge vif_vga.vga_clk);
+            if (vif_vga.vga_blank_n)
+                break;
+        end
+    endtask
+
+    task advance_clocks(input int num_clocks);
+        repeat (num_clocks) @(posedge vif_vga.vga_clk);
+    endtask
+
+    function automatic byte unsigned rgb888_to_rgb332(
+        input logic [7:0] r8,
+        input logic [7:0] g8,
+        input logic [7:0] b8
+    );
+        return {r8[7:5], g8[7:5], b8[7:6]};
+    endfunction
+
+    function automatic void ref_rgb332_to_888(
+        input  byte unsigned rgb332,
+        output byte unsigned r8,
+        output byte unsigned g8,
+        output byte unsigned b8
+    );
+        r8 = {rgb332[7:5], rgb332[7:5], rgb332[7:6]};
+        g8 = {rgb332[4:2], rgb332[4:2], rgb332[4:3]};
+        b8 = {rgb332[1:0], rgb332[1:0], rgb332[1:0], rgb332[1:0]};
+    endfunction
+
+    task sample_visible_pixel(
+        input  int x,
+        input  int y,
+        output byte unsigned got_r,
+        output byte unsigned got_g,
+        output byte unsigned got_b,
+        output logic        got_blank_n
+    );
+        wait_visible_frame_start();
+        advance_clocks(y * VGA_H_TOTAL + x);
+
+        got_r       = vif_vga.vga_r;
+        got_g       = vif_vga.vga_g;
+        got_b       = vif_vga.vga_b;
+        got_blank_n = vif_vga.vga_blank_n;
+    endtask
+
+    task capture_frame(output byte unsigned frame_pixels[76800]);
+        int px;
+
+        foreach (frame_pixels[i])
+            frame_pixels[i] = 8'h00;
+
+        wait_visible_frame_start();
+
+        for (int row = 0; row < VGA_V_VISIBLE; row++) begin
+            for (int col = 0; col < VGA_H_TOTAL; col++) begin
+                if (col < VGA_H_VISIBLE) begin
+                    if (!vif_vga.vga_blank_n)
+                        `uvm_error("VGA_FRAME", $sformatf("blank_n deasserted inside visible area at (%0d,%0d)", col, row))
+
+                    if (col[0] == 0 && row[0] == 0) begin
+                        px = (row >> 1) * 320 + (col >> 1);
+                        frame_pixels[px] = rgb888_to_rgb332(vif_vga.vga_r, vif_vga.vga_g, vif_vga.vga_b);
+                    end
+                end else if (vif_vga.vga_blank_n) begin
+                    `uvm_error("VGA_FRAME", $sformatf("blank_n asserted in horizontal blanking at row=%0d col=%0d", row, col))
+                end
+
+                if (!(row == VGA_V_VISIBLE - 1 && col == VGA_H_TOTAL - 1))
+                    @(posedge vif_vga.vga_clk);
+            end
+        end
+    endtask
+
+    task compare_frame(input byte unsigned frame_pixels[76800], input string tag);
+        int mismatch_cnt = 0;
+
+        for (int i = 0; i < 76800; i++) begin
+            if (frame_pixels[i] !== test_image[i]) begin
+                mismatch_cnt++;
+                if (mismatch_cnt <= 5)
+                    `uvm_error("VGA_FRAME", $sformatf("%s mismatch at pixel %0d: got=0x%02x exp=0x%02x", tag, i, frame_pixels[i], test_image[i]))
+            end
+        end
+
+        if (mismatch_cnt == 0)
+            `uvm_info("TEST", $sformatf("%s frame compare PASS (76800 pixels)", tag), UVM_LOW)
+        else
+            `uvm_error("VGA_FRAME", $sformatf("%s frame compare FAIL: %0d mismatches", tag, mismatch_cnt))
     endtask
 endclass : vga_base_test
 
@@ -75,18 +182,56 @@ class vga_timing_test extends vga_base_test;
     endfunction
 
     virtual task run_test_body(uvm_phase phase);
-        // TODO: 通过 VGA Monitor 统计 hsync/vsync 脉冲宽度和间隔
-        // 检查点:
-        //   ① hsync 低电平宽度 = 96 像素时钟周期 (3.84us)
-        //   ② vsync 低电平宽度 = 2 行
-        //   ③ 行周期 = 800 像素时钟 (32us)
-        //   ④ 帧周期 = 525 行 × 800 像素 = 16.68ms ≈ 60Hz
-        //   ⑤ blank_n 在同步+porch 区间为 0
-        //   ⑥ sync_n 固定为 0 (对 VGA ADC 无用但需正确)
+        time hsync_t0;
+        time hsync_t1;
+        time hsync_t2;
+        time vsync_t0;
+        time vsync_t1;
+        time vsync_t2;
+        time exp_hsync_low  = 3840ns;
+        time exp_line       = 32000ns;
+        time exp_vsync_low  = 64000ns;
+        time exp_frame      = 16800000ns;
 
-        // 等待 2 帧完成
-        #1_000_000_000; // 约 2 帧 @ 25MHz: 2 × 525 × 800 × 40ns = 33.6ms
-        `uvm_info("TEST", "vga_timing_test: timing check complete (TODO: implement monitor check)", UVM_NONE)
+        wait_until_ready();
+
+        @(negedge vif_vga.vga_hs);
+        hsync_t0 = $time;
+        @(posedge vif_vga.vga_hs);
+        hsync_t1 = $time;
+        @(negedge vif_vga.vga_hs);
+        hsync_t2 = $time;
+
+        if (hsync_t1 - hsync_t0 != exp_hsync_low)
+            `uvm_error("VGA_TIMING", $sformatf("hsync low width mismatch: got %0t exp %0t", hsync_t1 - hsync_t0, exp_hsync_low))
+
+        if (hsync_t2 - hsync_t0 != exp_line)
+            `uvm_error("VGA_TIMING", $sformatf("line period mismatch: got %0t exp %0t", hsync_t2 - hsync_t0, exp_line))
+
+        @(negedge vif_vga.vga_vs);
+        vsync_t0 = $time;
+        @(posedge vif_vga.vga_vs);
+        vsync_t1 = $time;
+        @(negedge vif_vga.vga_vs);
+        vsync_t2 = $time;
+
+        if (vsync_t1 - vsync_t0 != exp_vsync_low)
+            `uvm_error("VGA_TIMING", $sformatf("vsync low width mismatch: got %0t exp %0t", vsync_t1 - vsync_t0, exp_vsync_low))
+
+        if (vsync_t2 - vsync_t0 != exp_frame)
+            `uvm_error("VGA_TIMING", $sformatf("frame period mismatch: got %0t exp %0t", vsync_t2 - vsync_t0, exp_frame))
+
+        wait_visible_frame_start();
+        if (!vif_vga.vga_blank_n)
+            `uvm_error("VGA_TIMING", "blank_n should be 1 at top-left visible pixel")
+        if (vif_vga.vga_sync_n !== 1'b0)
+            `uvm_error("VGA_TIMING", $sformatf("sync_n should stay 0, got %0b", vif_vga.vga_sync_n))
+
+        @(negedge vif_vga.vga_hs);
+        if (vif_vga.vga_blank_n !== 1'b0)
+            `uvm_error("VGA_TIMING", "blank_n should be 0 during hsync interval")
+
+        `uvm_info("TEST", "vga_timing_test: timing checks passed", UVM_NONE)
     endtask
 endclass : vga_timing_test
 
@@ -100,28 +245,54 @@ class vga_pixel_test extends vga_base_test;
         super.new(name, parent);
     endfunction
 
-    // 参考模型: RGB332 → RGB888 位扩展规则
-    // R[7:0] = {rgb332[7:5], rgb332[7:5], rgb332[7:6]}
-    // G[7:0] = {rgb332[4:2], rgb332[4:2], rgb332[4:3]}
-    // B[7:0] = {rgb332[1:0], rgb332[1:0], rgb332[1:0], rgb332[1:0]}
-    function automatic void ref_rgb332_to_888(
-        input  byte unsigned rgb332,
-        output byte unsigned r8, g8, b8
-    );
-        r8 = {rgb332[7:5], rgb332[7:5], rgb332[7:6]};
-        g8 = {rgb332[4:2], rgb332[4:2], rgb332[4:3]};
-        b8 = {rgb332[1:0], rgb332[1:0], rgb332[1:0], rgb332[1:0]};
-    endfunction
-
     virtual task run_test_body(uvm_phase phase);
-        // TODO: VGA Monitor 在第 1 帧内采样每个有效像素的 vga_r/g/b
-        // 对每个像素坐标 (x, y):
-        //   期望 pixel = test_image[y/2 * 320 + x/2]  (2x 缩放还原)
-        //   ref_rgb332_to_888(pixel, exp_r, exp_g, exp_b)
-        //   断言 vga_r == exp_r && vga_g == exp_g && vga_b == exp_b
+        byte unsigned got_r;
+        byte unsigned got_g;
+        byte unsigned got_b;
+        byte unsigned exp_r;
+        byte unsigned exp_g;
+        byte unsigned exp_b;
+        byte unsigned exp_px;
+        int img_idx;
+        int sample_idx = 0;
+        int sample_x[$] = '{0, 1, 2, 17, 126, 319, 320, 511, 638, 639};
+        int sample_y[$] = '{0, 0, 1, 2, 33, 120, 121, 238, 478, 479};
 
-        #1_000_000_000;
-        `uvm_info("TEST", "vga_pixel_test: RGB332→888 mapping check complete (TODO)", UVM_NONE)
+        wait_visible_frame_start();
+
+        for (int row = 0; row < VGA_V_VISIBLE; row++) begin
+            for (int col = 0; col < VGA_H_TOTAL; col++) begin
+                if (col < VGA_H_VISIBLE && sample_idx < sample_x.size() &&
+                    row == sample_y[sample_idx] && col == sample_x[sample_idx]) begin
+                    got_r = vif_vga.vga_r;
+                    got_g = vif_vga.vga_g;
+                    got_b = vif_vga.vga_b;
+
+                    img_idx = (row >> 1) * 320 + (col >> 1);
+                    exp_px  = test_image[img_idx];
+                    ref_rgb332_to_888(exp_px, exp_r, exp_g, exp_b);
+
+                    if (!vif_vga.vga_blank_n)
+                        `uvm_error("VGA_PIXEL", $sformatf("blank_n low at visible sample (%0d,%0d)", col, row))
+
+                    if (got_r !== exp_r || got_g !== exp_g || got_b !== exp_b) begin
+                        `uvm_error("VGA_PIXEL", $sformatf(
+                            "pixel mismatch at (%0d,%0d): got=(%02x,%02x,%02x) exp=(%02x,%02x,%02x) src=0x%02x",
+                            col, row, got_r, got_g, got_b, exp_r, exp_g, exp_b, exp_px))
+                    end
+
+                    sample_idx++;
+                end
+
+                if (!(row == VGA_V_VISIBLE - 1 && col == VGA_H_TOTAL - 1))
+                    @(posedge vif_vga.vga_clk);
+            end
+        end
+
+        if (sample_idx != sample_x.size())
+            `uvm_error("VGA_PIXEL", $sformatf("sample collection incomplete: checked %0d/%0d points", sample_idx, sample_x.size()))
+
+        `uvm_info("TEST", "vga_pixel_test: sampled RGB332→RGB888 mapping passed", UVM_NONE)
     endtask
 endclass : vga_pixel_test
 
@@ -138,10 +309,14 @@ class vga_fullframe_test extends vga_base_test;
     endfunction
 
     virtual task run_test_body(uvm_phase phase);
-        // TODO: 等待 VGA Monitor 发布 required_frames 个 vga_frame_item
-        //       每帧独立进行逐像素比对
-        #2_000_000_000;
-        `uvm_info("TEST", $sformatf("vga_fullframe_test: %0d frames verified (TODO)", required_frames), UVM_NONE)
+        byte unsigned frame_pixels[76800];
+
+        for (int frame_idx = 0; frame_idx < required_frames; frame_idx++) begin
+            capture_frame(frame_pixels);
+            compare_frame(frame_pixels, $sformatf("frame%0d", frame_idx + 1));
+        end
+
+        `uvm_info("TEST", $sformatf("vga_fullframe_test: %0d full frame(s) verified", required_frames), UVM_NONE)
     endtask
 endclass : vga_fullframe_test
 

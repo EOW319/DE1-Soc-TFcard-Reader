@@ -50,6 +50,7 @@ module tb_vga_top;
     logic [7:0]  vga_r;
     logic [7:0]  vga_g;
     logic [7:0]  vga_b;
+    logic        preload_done;
 
     // =========================================================================
     // 子模块: img_ram + vga_ctrl
@@ -69,10 +70,10 @@ module tb_vga_top;
         .img_data  (ram_rdata),
         .ram_addr  (ram_raddr),
         .vga_clk   (vga_clk),
-        .hsync     (vga_hs),
-        .vsync     (vga_vs),
-        .blank_n   (vga_blank_n),
-        .sync_n    (vga_sync_n),
+        .vga_hsync (vga_hs),
+        .vga_vsync (vga_vs),
+        .vga_blank_n (vga_blank_n),
+        .vga_sync_n  (vga_sync_n),
         .vga_r     (vga_r),
         .vga_g     (vga_g),
         .vga_b     (vga_b)
@@ -86,6 +87,7 @@ module tb_vga_top;
         we    = 0;
         waddr = 0;
         wdata = 0;
+        preload_done = 0;
         @(posedge rst_n);
         @(posedge clk_25);
 
@@ -97,6 +99,7 @@ module tb_vga_top;
             @(posedge clk_25);
         end
         we <= 0;
+        preload_done <= 1;
         $display("[VGA_TB] img_ram preload done (76800 bytes)");
     end
 
@@ -112,11 +115,13 @@ module tb_vga_top;
     assign u_sys_if.vga_r       = vga_r;
     assign u_sys_if.vga_g       = vga_g;
     assign u_sys_if.vga_b       = vga_b;
+    assign u_sys_if.preload_done = preload_done;
 
     // =========================================================================
     // UVM 配置与启动
     // =========================================================================
     initial begin
+        uvm_config_db #(virtual sd_sys_if.vga_mon)::set(null, "uvm_test_top",   "vif_vga", u_sys_if.vga_mon);
         uvm_config_db #(virtual sd_sys_if.vga_mon)::set(null, "uvm_test_top.*", "vif_vga", u_sys_if.vga_mon);
         run_test();
     end
