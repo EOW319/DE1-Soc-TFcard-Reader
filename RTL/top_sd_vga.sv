@@ -1,4 +1,6 @@
-module top_sd_vga (
+module top_sd_vga #(
+    parameter bit SD_READER_SIMULATE = 0
+) (
     input  logic        CLOCK_50,
     input  logic [3:0]  KEY,      // KEY[0] is reset_n
     
@@ -56,7 +58,7 @@ module top_sd_vga (
     
     // SD Reader Module
     // Note: Assuming SD_DAT[0] is the data line from card
-    sd_reader #(.CLK_DIV(3'd2), .SIMULATE(0)) u_sd_reader (
+    sd_reader #(.CLK_DIV(3'd2), .SIMULATE(SD_READER_SIMULATE)) u_sd_reader (
         .clk(clk_25),
         .rst_n(rst_n),
         .rstart(sd_rstart),

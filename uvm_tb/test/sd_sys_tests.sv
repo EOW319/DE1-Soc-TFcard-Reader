@@ -76,9 +76,19 @@ class sys_base_test extends uvm_test;
             env.m_fat32_sb.ref_image       = ref_image;
             env.m_fat32_sb.ref_image_valid = 1;
             env.m_vga_sb.ref_image         = ref_image;
-            env.m_vga_sb.ref_image_valid   = 1;
+            env.m_vga_sb.ref_image_valid   = 0;
         end
     endfunction
+
+    task enable_vga_compare();
+        if (skip_ram_compare || env == null || env.m_vga_sb == null)
+            return;
+
+        env.m_vga_sb.ref_image       = ref_image;
+        env.m_vga_sb.ref_image_valid = 1;
+        env.m_vga_sb.frame_cnt       = 0;
+        env.m_vga_sb.fail_cnt        = 0;
+    endtask
 
     task run_phase(uvm_phase phase);
         phase.raise_objection(this);
@@ -123,15 +133,40 @@ class sys_base_test extends uvm_test;
 
     // 等待指定数量的 VGA 帧 (通过 vsync 下降沿计数)
     task wait_vga_frames(input int num_frames = 2);
-        virtual sd_sys_if.vga_mon vif_vga;
-        if (!uvm_config_db#(virtual sd_sys_if.vga_mon)::get(this, "", "vif_vga", vif_vga)) begin
-            `uvm_warning("TEST", "vif_vga not available, using delay instead")
+        int start_frame_cnt;
+        int target_frame_cnt;
+        time timeout;
+
+        if (env == null || env.m_vga_sb == null) begin
+            `uvm_warning("TEST", "vga scoreboard not available, using delay instead")
             #(num_frames * 17_000_000);  // ~17ms per frame @ 60Hz
             return;
         end
-        `uvm_info("TEST", $sformatf("Waiting for %0d VGA frame(s)...", num_frames), UVM_MEDIUM)
-        repeat (num_frames) @(negedge vif_vga.vga_vs);
-        `uvm_info("TEST", $sformatf("%0d VGA frame(s) completed", num_frames), UVM_MEDIUM)
+
+        start_frame_cnt  = env.m_vga_sb.frame_cnt;
+        target_frame_cnt = start_frame_cnt + num_frames;
+        timeout          = (num_frames + 2) * 20ms;
+
+        `uvm_info("TEST", $sformatf(
+            "Waiting for %0d VGA frame(s): frame_cnt %0d -> %0d...",
+            num_frames, start_frame_cnt, target_frame_cnt), UVM_MEDIUM)
+
+        fork : wait_vga_frames_or_timeout
+            begin
+                wait (env.m_vga_sb.frame_cnt >= target_frame_cnt);
+            end
+            begin
+                #(timeout);
+                `uvm_error("TEST", $sformatf(
+                    "TIMEOUT: VGA frames did not advance from %0d to %0d within %0t (current=%0d)",
+                    start_frame_cnt, target_frame_cnt, timeout, env.m_vga_sb.frame_cnt))
+            end
+        join_any
+        disable wait_vga_frames_or_timeout;
+
+        `uvm_info("TEST", $sformatf(
+            "%0d VGA frame(s) completed via scoreboard (frame_cnt=%0d)",
+            num_frames, env.m_vga_sb.frame_cnt), UVM_MEDIUM)
     endtask
 
 endclass : sys_base_test
@@ -153,6 +188,9 @@ class sys_normal_test extends sys_base_test;
         // 检查 file_found 已被置位
         if (!vif_fat32.file_found)
             `uvm_error("TEST", "read_done asserted but file_found is 0")
+
+        // 文件读取完成后再启动 VGA 比对，避免上电后的空白帧污染结果
+        enable_vga_compare();
 
         // 等待 2 个 VGA 帧完成像素比对
         `uvm_info("TEST", "sys_normal_test: Waiting 2 VGA frames for pixel compare...", UVM_MEDIUM)
@@ -222,10 +260,12 @@ class sys_cluster_size_test extends sys_base_test;
             "sys_cluster_size_test: running with compile-time spc=%0d",
             fat32_image_gen::SECTORS_PER_CLUSTER), UVM_MEDIUM)
 
-        wait_read_done(100_000_000);
+        wait_read_done(3s);
 
         if (!vif_fat32.file_found)
             `uvm_error("TEST", "file_found not asserted")
+
+        enable_vga_compare();
 
         // 等待 1 个 VGA 帧验证像素
         wait_vga_frames(1);
@@ -253,10 +293,12 @@ class sys_partition_lba_test extends sys_base_test;
             "sys_partition_lba_test: running with compile-time lba=0x%0X",
             fat32_image_gen::PARTITION_START_LBA), UVM_MEDIUM)
 
-        wait_read_done(100_000_000);
+        wait_read_done(3s);
 
         if (!vif_fat32.file_found)
             `uvm_error("TEST", "file_found not asserted")
+
+        enable_vga_compare();
 
         wait_vga_frames(1);
 
@@ -283,13 +325,15 @@ class sys_reserved_sec_test extends sys_base_test;
             "sys_reserved_sec_test: running with compile-time reserved=%0d",
             fat32_image_gen::RESERVED_SECTORS), UVM_MEDIUM)
 
-        wait_read_done(100_000_000);
+        wait_read_done(3s);
 
         if (!vif_fat32.file_found)
             `uvm_error("TEST", "file_found not asserted")
 
         if (!vif_fat32.read_done)
             `uvm_error("TEST", "read_done not asserted")
+
+        enable_vga_compare();
 
         wait_vga_frames(1);
 

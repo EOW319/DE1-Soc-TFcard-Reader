@@ -30,6 +30,8 @@ module vga_ctrl (
 
     logic [9:0] h_cnt;
     logic [9:0] v_cnt;
+    logic [9:0] h_cnt_next;
+    logic [9:0] v_cnt_next;
 
     assign vga_clk = clk;
     assign vga_sync_n = 1'b0; // Usually tied to 0 for generic VGA or ignored
@@ -52,6 +54,21 @@ module vga_ctrl (
         end
     end
 
+    always_comb begin
+        h_cnt_next = h_cnt;
+        v_cnt_next = v_cnt;
+
+        if (h_cnt < H_TOTAL - 1) begin
+            h_cnt_next = h_cnt + 1'b1;
+        end else begin
+            h_cnt_next = 0;
+            if (v_cnt < V_TOTAL - 1)
+                v_cnt_next = v_cnt + 1'b1;
+            else
+                v_cnt_next = 0;
+        end
+    end
+
     // Sync Signals
     assign vga_hsync = !((h_cnt >= H_VISIBLE + H_FRONT) && (h_cnt < H_VISIBLE + H_FRONT + H_SYNC));
     assign vga_vsync = !((v_cnt >= V_VISIBLE + V_FRONT) && (v_cnt < V_VISIBLE + V_FRONT + V_SYNC));
@@ -64,18 +81,15 @@ module vga_ctrl (
     // Memory Address Calculation
     // Scaling 320x240 image to 640x480 screen (2x zoom)
     // addr = (y/2) * 320 + (x/2)
-    wire [8:0] mem_x = h_cnt[9:1]; // x / 2
-    wire [7:0] mem_y = v_cnt[8:1]; // y / 2
-    
-    // Since BRAM read has latency (usually 1 or 2 cycles), we should output address ahead of time.
-    // However, for 25MHz, 1 cycle delay is 40ns. 
-    // If we use the address now, the data comes next cycle.
-    // The VGA signal will be delayed by 1 pixel.
-    // Ideally we pipeline the sync signals to match data delay.
-    // Here we will just output address.
+    wire [8:0] mem_x = h_cnt_next[9:1]; // x / 2
+    wire [7:0] mem_y = v_cnt_next[8:1]; // y / 2
+    wire       active_area_next = (h_cnt_next < H_VISIBLE) && (v_cnt_next < V_VISIBLE);
+
+    // img_ram 为同步读 RAM，rdata 会在下一个时钟边沿更新。
+    // 因此这里将读地址提前一拍输出，使当前像素坐标与 img_data 对齐。
     // 320 * mem_y + mem_x
     // 320 = 256 + 64 = (mem_y << 8) + (mem_y << 6)
-    assign ram_addr = (active_area) ? ({9'b0, mem_y} << 8) + ({9'b0, mem_y} << 6) + {8'b0, mem_x} : 17'd0;
+    assign ram_addr = (active_area_next) ? ({9'b0, mem_y} << 8) + ({9'b0, mem_y} << 6) + {8'b0, mem_x} : 17'd0;
 
     // Color Output
     // Assuming img_data is 8-bit color (RRRGGGBB or similar)

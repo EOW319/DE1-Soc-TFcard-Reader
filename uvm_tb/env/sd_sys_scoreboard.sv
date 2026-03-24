@@ -140,12 +140,11 @@ class vga_frame_scoreboard extends uvm_scoreboard;
 
     function void write(vga_frame_item item);
         int mismatch = 0;
-        frame_cnt++;
 
-        if (!ref_image_valid) begin
-            `uvm_warning("VGASB", "ref_image not set, skipping pixel comparison")
+        if (!ref_image_valid)
             return;
-        end
+
+        frame_cnt++;
 
         for (int i = 0; i < 76800; i++) begin
             if (item.pixels[i] !== ref_image[i]) begin

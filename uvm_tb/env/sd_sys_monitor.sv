@@ -130,20 +130,22 @@ class vga_monitor extends uvm_monitor;
     // 帧捕获主循环
     // -------------------------------------------------------------------------
     // 逻辑:
-    //   1. 等待 vsync 下降沿 (帧开始)
-    //   2. 跳过 V_SYNC + V_BACK 行
-    //   3. 在 V_VISIBLE=480 行中，每行:
-    //      a. 等待 hsync 下降沿 (行开始)
-    //      b. 跳过 H_SYNC + H_BACK 像素
-    //      c. 在 H_VISIBLE=640 像素中采样 vga_r/g/b
-    //   4. 将 640×480 缩放还原为 320×240 (2x 放大还原: 取偶数行偶数列)
-    //   5. RGB888 → RGB332 反向转换
-    //   6. 填充 vga_frame_item.pixels[76800] 并 ap.write()
+    //   1. 等待 vsync 下降沿 (帧同步开始)
+    //   2. 对整帧 525x800 像素时钟逐点采样
+    //   3. 当前 vga_ctrl 的时序实现中，可见区位于每行/每帧计数的起始段，
+    //      sync/porch 位于后半段，因此这里不能按“sync+back porch 之后进入可见区”去取样
+    //   4. 在 row 映射到下一帧可见区、且 col 落在 0..639 时采样 vga_r/g/b
+    //   5. 将 640×480 缩放还原为 320×240 (2x 放大还原: 取偶数行偶数列)
+    //   6. RGB888 → RGB332 反向转换
+    //   7. 填充 vga_frame_item.pixels[76800] 并 ap.write()
     task capture_frames();
         forever begin
             vga_frame_item frame;
             byte unsigned  pixel_buf[76800];
             int vis_x, vis_y, px;
+            int frame_row;
+
+            foreach (pixel_buf[i]) pixel_buf[i] = 8'h00;
 
             // --- 等待帧开始: vsync 下降沿 ---
             @(negedge vif.vga_vs);
@@ -153,12 +155,16 @@ class vga_monitor extends uvm_monitor;
                 for (int col = 0; col < H_TOTAL; col++) begin
                     @(posedge vif.vga_clk);
 
-                    // 判断当前是否在可见区
-                    if (row >= (V_SYNC + V_BACK) && row < (V_SYNC + V_BACK + V_VISIBLE) &&
-                        col >= (H_SYNC + H_BACK) && col < (H_SYNC + H_BACK + H_VISIBLE)) begin
+                    // 当前 DUT 的计数方式是: 可见区先输出，随后才是 front porch / sync / back porch。
+                    // 因此从 vsync 下降沿起算，经过 V_SYNC + V_BACK 行后，对应下一帧的 row 0。
+                    frame_row = row - (V_SYNC + V_BACK);
 
-                        vis_x = col - (H_SYNC + H_BACK);
-                        vis_y = row - (V_SYNC + V_BACK);
+                    // 判断当前是否在可见区
+                    if (frame_row >= 0 && frame_row < V_VISIBLE &&
+                        col >= 0 && col < H_VISIBLE) begin
+
+                        vis_x = col;
+                        vis_y = frame_row;
 
                         // 2x 放大还原: 只取偶数行偶数列
                         if (vis_x[0] == 0 && vis_y[0] == 0) begin
