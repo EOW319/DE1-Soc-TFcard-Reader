@@ -15,7 +15,13 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     output logic [7:0] outbyte,
     output logic debug_syntaxe,
     output logic debug_timeout,
-
+    (*keep*)output logic [3:0] state_debug,
+    output logic [5:0] dbg_resp_cmd_idx,
+    output logic [6:0] dbg_resp_crc,
+    output logic [6:0] dbg_expected_resp_crc,
+    output logic       dbg_cmd_idx_match,
+    output logic       dbg_crc_match,
+    output logic       dbg_resp_check_fire,
 
     output logic sdclk,
 
@@ -23,8 +29,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     input  logic sddata0,
     inout wire sdcmd
 );
-    localparam sim_wait = 64; // Number of cycles to wait for initialization in SIMULATE mode
-    localparam real_wait = 640;
+    localparam [15:0] RESP_PRECNT = 16'd0;
     logic [15:0] precnt;
     logic [15:0] clkdiv;
     logic [15:0] cmd;
@@ -60,7 +65,13 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     .timeout(timeout),
     .syntaxe(syntaxe),
     .resparg(resparg),
-    .sdcmdoe(sdcmdoe)
+    .sdcmdoe(sdcmdoe),
+    .dbg_resp_cmd_idx(dbg_resp_cmd_idx),
+    .dbg_resp_crc(dbg_resp_crc),
+    .dbg_expected_resp_crc(dbg_expected_resp_crc),
+    .dbg_cmd_idx_match(dbg_cmd_idx_match),
+    .dbg_crc_match(dbg_crc_match),
+    .dbg_resp_check_fire(dbg_resp_check_fire)
     );
 
     assign debug_syntaxe = syntaxe;
@@ -92,8 +103,10 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
         READING
     } sd_state_t;
 
-    sd_state_t sdcmd_stat;
-    logic [1:0] cmd_step; // 0: send cmd, 1: wait done
+    (* preserve *) sd_state_t sdcmd_stat;
+    (* preserve *) logic [1:0] cmd_step; // 0: send cmd, 1: wait done
+
+    assign state_debug = sdcmd_stat;
 
 
     //sdcard state machine
@@ -117,7 +130,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
             case (sdcmd_stat)
                 CMD0: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 0, 'h00000000);
+                        set_cmd(1, RESP_PRECNT, 0, 'h00000000);
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && timeout) begin
                          sdcmd_stat <= CMD8;
@@ -127,7 +140,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                 
                 CMD8: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 8, 'h000001aa);
+                        set_cmd(1, RESP_PRECNT, 8, 'h000001aa);
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && done) begin
                         sdcmd_stat <= CMD55;
@@ -140,17 +153,20 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                 
                 CMD55: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 55, 'h00000000); // CMD55
+                        set_cmd(1, RESP_PRECNT, 55, 'h00000000); // CMD55
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && done) begin
                          sdcmd_stat <= CMD41;
                          cmd_step <= 0;
+                    end else if (cmd_step == 2 && (timeout || syntaxe)) begin
+                        sdcmd_stat <= CMD0;
+                        cmd_step <= 0;
                     end
                 end
 
                 CMD41: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 41, 'h40100000); // ACMD41 with HCS bit
+                        set_cmd(1, RESP_PRECNT, 41, 'h40100000); // ACMD41 with HCS bit
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && done) begin
                          if (resparg[31] == 1'b1) begin // Card Power Up Status Bit
@@ -159,49 +175,64 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                              sdcmd_stat <= CMD55; // Not ready, repeat CMD55+ACMD41
                          end
                          cmd_step <= 0;
+                    end else if (cmd_step == 2 && (timeout || syntaxe)) begin
+                        sdcmd_stat <= CMD0;
+                        cmd_step <= 0;
                     end
                 end
 
                 CMD2: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 2, 'h00000000);
+                        set_cmd(1, RESP_PRECNT, 2, 'h00000000);
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && done) begin
                          sdcmd_stat <= CMD3;
                          cmd_step <= 0;
+                    end else if (cmd_step == 2 && (timeout || syntaxe)) begin
+                        sdcmd_stat <= CMD0;
+                        cmd_step <= 0;
                     end
                 end
 
                 CMD3: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 3, 'h00000000);
+                        set_cmd(1, RESP_PRECNT, 3, 'h00000000);
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && done) begin
                          rca <= resparg[31:16];
                          sdcmd_stat <= CMD7;
                          cmd_step <= 0;
+                    end else if (cmd_step == 2 && (timeout || syntaxe)) begin
+                        sdcmd_stat <= CMD0;
+                        cmd_step <= 0;
                     end
                 end
 
                 CMD7: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 7, {rca, 16'h0});
+                        set_cmd(1, RESP_PRECNT, 7, {rca, 16'h0});
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && done) begin
                          clkdiv <= FASTCLKDIV; // Switch to fast clock
                          sdcmd_stat <= CMD16;
                          cmd_step <= 0;
+                    end else if (cmd_step == 2 && (timeout || syntaxe)) begin
+                        sdcmd_stat <= CMD0;
+                        cmd_step <= 0;
                     end
                 end
 
                 CMD16: begin
                     if (cmd_step == 0) begin
-                        set_cmd(1, (SIMULATE?sim_wait:real_wait), 16, 'h00000200); // Block len 512
+                        set_cmd(1, RESP_PRECNT, 16, 'h00000200); // Block len 512
                         cmd_step <= 1;
                     end else if (cmd_step == 2 && done) begin
                          sdcmd_stat <= CMD17;
                          cmd_step <= 0;
                          rbusy <= 0; // Initialization done
+                    end else if (cmd_step == 2 && (timeout || syntaxe)) begin
+                        sdcmd_stat <= CMD0;
+                        cmd_step <= 0;
                     end
                 end
 
@@ -209,7 +240,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                     // Idle state waiting for read request
                     if (cmd_step == 0) begin
                         if (rstart) begin
-                            set_cmd(1, (SIMULATE?sim_wait:real_wait), 17, rsector);
+                            set_cmd(1, RESP_PRECNT, 17, rsector);
                             rbusy <= 1;
                             cmd_step <= 1;
                         end else begin
@@ -219,6 +250,10 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                          // Command sent, now wait for data
                          sdcmd_stat <= READING;
                          cmd_step <= 0;
+                    end else if (cmd_step == 2 && (timeout || syntaxe)) begin
+                        sdcmd_stat <= CMD17;
+                        cmd_step <= 0;
+                        rbusy <= 0;
                     end
                 end
 

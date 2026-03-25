@@ -17,7 +17,13 @@ module sdcmd_ctrl (
     output logic          timeout,
     output logic          syntaxe,
     output logic  [31:0] resparg,
-    output logic         sdcmdoe
+    output logic         sdcmdoe,
+    output logic  [5:0]  dbg_resp_cmd_idx,
+    output logic  [6:0]  dbg_resp_crc,
+    output logic  [6:0]  dbg_expected_resp_crc,
+    output logic         dbg_cmd_idx_match,
+    output logic         dbg_crc_match,
+    output logic         dbg_resp_check_fire
 );
 
 //--------------------------------------------
@@ -35,8 +41,9 @@ module sdcmd_ctrl (
     S_TIMEOUT
     } state_t;
     logic [47:0] cmd_shift;
-    logic [3:0] current_state, next_state;
-    logic [5:0] cmd_reg;
+    (* preserve *) logic [3:0] current_state;
+    logic [3:0] next_state;
+    (* preserve *) logic [5:0] cmd_reg;
     logic sdcmdout = 1'b1;
 
     // sdcmd tri-state driver
@@ -74,12 +81,18 @@ module sdcmd_ctrl (
     logic sdclk_q;
     logic [5:0] bit_cnt;
     logic [15:0] precnt_reg;
-    logic [7:0] timeout_cnt;
-    logic [7:0] resp_cnt;
-    logic [47:0] resp_reg;
-    logic [5:0] expected_resp_cmd_idx;
-    logic [6:0] expected_resp_crc7;
+    (* preserve *) logic [7:0] timeout_cnt;
+    (* preserve *) logic [7:0] resp_cnt;
+    (* preserve *) logic [47:0] resp_reg;
+    (* preserve *) logic [5:0] expected_resp_cmd_idx;
+    (* preserve *) logic [6:0] expected_resp_crc7;
     logic       crc_check_en;
+    (* preserve *) logic [5:0] resp_cmd_idx_dbg;
+    (* preserve *) logic [6:0] resp_crc_dbg;
+    (* preserve *) logic [6:0] expected_resp_crc_dbg;
+    (* preserve *) logic       cmd_idx_match_dbg;
+    (* preserve *) logic       crc_match_dbg;
+    (* preserve *) logic       resp_check_fire_dbg;
 
     always_comb begin
         unique case (cmd_reg)
@@ -90,6 +103,12 @@ module sdcmd_ctrl (
 
     assign expected_resp_crc7 = CalcCrc7(resp_reg[47:8]);
     assign crc_check_en       = (cmd_reg != 6'd2) && (cmd_reg != 6'd41);
+    assign dbg_resp_cmd_idx   = resp_cmd_idx_dbg;
+    assign dbg_resp_crc       = resp_crc_dbg;
+    assign dbg_expected_resp_crc = expected_resp_crc_dbg;
+    assign dbg_cmd_idx_match  = cmd_idx_match_dbg;
+    assign dbg_crc_match      = crc_match_dbg;
+    assign dbg_resp_check_fire = resp_check_fire_dbg;
 //-----------------------SDCLK divider---------------------
     
     always_ff @(posedge clk) begin : clk_divider
@@ -120,16 +139,33 @@ module sdcmd_ctrl (
             resp_cnt      <= 6'd0;
             cmd_reg       <= '0;
             resp_reg      <= '0;
+            resp_cmd_idx_dbg     <= '0;
+            resp_crc_dbg         <= '0;
+            expected_resp_crc_dbg <= '0;
+            cmd_idx_match_dbg    <= 1'b0;
+            crc_match_dbg        <= 1'b0;
+            resp_check_fire_dbg  <= 1'b0;
         end
         else begin
             current_state <= next_state;
             crc7 <= CalcCrc7(crc_data);
+            resp_cmd_idx_dbg      <= resp_reg[45:40];
+            resp_crc_dbg          <= resp_reg[7:1];
+            expected_resp_crc_dbg <= expected_resp_crc7;
+            cmd_idx_match_dbg     <= (resp_reg[45:40] == expected_resp_cmd_idx);
+            crc_match_dbg         <= !crc_check_en || (resp_reg[7:1] == expected_resp_crc7);
+            resp_check_fire_dbg   <= (current_state == S_READ_RESP) && (resp_cnt == 6'd0);
 
             // --- S_LOAD_CMD: 锁存参数，初始化计数器 ---
             if (current_state == S_LOAD_CMD) begin
                 precnt_reg  <= precnt;
                 timeout_cnt <= '0;
-                resp_cnt    <= (cmd == 6'd2) ? 8'd135 : 8'd47; // CMD2: R2(136b), 其他: 48b
+                // The response start bit is already captured in S_WAIT_RESP. At
+                // the end of each S_READ_RESP sample we decrement resp_cnt, and
+                // the FSM checks for completion when resp_cnt == 0. Therefore the
+                // counter must start at the full number of remaining bits so the
+                // last bit is sampled before the compare fires.
+                resp_cnt    <= (cmd == 6'd2) ? 8'd135 : 8'd47; // CMD2: remaining 135b, others: remaining 47b
                 bit_cnt     <= 6'd47;       // S_SEND_CMD 中发送 48 bit (47 down to 0)
                 cmd_reg     <= cmd;
                 resp_reg    <= '0;          // 重置为全 0 (空闲状态)
