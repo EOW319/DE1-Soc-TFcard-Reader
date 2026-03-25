@@ -28,10 +28,12 @@ module sdcmd_ctrl (
 
 //--------------------------------------------
     localparam [7:0] TIMEOUT = 8'd250;
+    localparam [3:0] COMMAND_GAP_CLKS = 4'd8;
 
     typedef enum logic [3:0] {
     S_IDLE,
     S_LOAD_CMD,
+    S_CMD_GAP,
     S_SEND_CMD,
     S_PRE_WAIT,
     S_WAIT_RESP,
@@ -80,6 +82,7 @@ module sdcmd_ctrl (
 //--------------------------------------------
     logic sdclk_q;
     logic [5:0] bit_cnt;
+    logic [3:0] cmd_gap_cnt;
     logic [15:0] precnt_reg;
     (* preserve *) logic [7:0] timeout_cnt;
     (* preserve *) logic [7:0] resp_cnt;
@@ -134,6 +137,7 @@ module sdcmd_ctrl (
         if (!rstn) begin
             current_state <= S_IDLE;
             bit_cnt       <= 6'd0;
+            cmd_gap_cnt   <= '0;
             precnt_reg    <= '0;
             timeout_cnt   <= '0;
             resp_cnt      <= 6'd0;
@@ -169,6 +173,14 @@ module sdcmd_ctrl (
                 bit_cnt     <= 6'd47;       // S_SEND_CMD 中发送 48 bit (47 down to 0)
                 cmd_reg     <= cmd;
                 resp_reg    <= '0;          // 重置为全 0 (空闲状态)
+            end
+
+            // --- S_CMD_GAP: 在命令之间插入固定空闲时钟，避免过早发起下一条命令 ---
+            if ((current_state == S_DONE || current_state == S_ERROR || current_state == S_TIMEOUT) &&
+                next_state == S_CMD_GAP) begin
+                cmd_gap_cnt <= COMMAND_GAP_CLKS;
+            end else if (current_state == S_CMD_GAP && sdclk_q == 1'b0 && sdclk == 1'b1 && cmd_gap_cnt != '0) begin
+                cmd_gap_cnt <= cmd_gap_cnt - 4'd1;
             end
 
             // --- S_SEND_CMD: sdclk 上升沿递减 bit_cnt ---
@@ -229,6 +241,11 @@ module sdcmd_ctrl (
                 next_state = S_SEND_CMD;
             end
 
+            S_CMD_GAP: begin
+                if (cmd_gap_cnt == '0)
+                    next_state = S_LOAD_CMD;
+            end
+
             S_SEND_CMD: begin
                 busy     = 1'b1;
                 sdcmdoe  = 1'b1;
@@ -268,19 +285,19 @@ module sdcmd_ctrl (
                 done    = 1'b1;
                 resparg = (cmd_reg == 6'd2) ? 32'h0 : resp_reg[39:8];
                 if (start)
-                    next_state = S_LOAD_CMD;
+                    next_state = S_CMD_GAP;
             end
 
             S_ERROR: begin
                 syntaxe = 1'b1;
                 if (start)
-                    next_state = S_LOAD_CMD;
+                    next_state = S_CMD_GAP;
             end
 
             S_TIMEOUT: begin
                 timeout = 1'b1;
                 if (start)
-                    next_state = S_LOAD_CMD;
+                    next_state = S_CMD_GAP;
             end
 
             default: begin

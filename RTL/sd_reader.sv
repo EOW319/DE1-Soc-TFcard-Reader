@@ -30,6 +30,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     inout wire sdcmd
 );
     localparam [15:0] RESP_PRECNT = 16'd0;
+    localparam [15:0] DATA_TOKEN_TIMEOUT = SIMULATE ? 16'd64 : 16'd4096;
     logic [15:0] precnt;
     logic [15:0] clkdiv;
     logic [15:0] cmd;
@@ -75,7 +76,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     );
 
     assign debug_syntaxe = syntaxe;
-    assign debug_timeout = timeout;
+    assign debug_timeout = timeout || data_wait_timeout;
 
     task set_cmd;
         input [ 0:0] _start;
@@ -262,6 +263,9 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                      if (rdone) begin
                          sdcmd_stat <= CMD17;
                          rbusy <= 0;
+                     end else if (data_wait_timeout) begin
+                         sdcmd_stat <= CMD17;
+                         rbusy <= 0;
                      end
                 end
                 
@@ -277,6 +281,10 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
     logic       reading_active;
     logic       sdclk_d;
     logic       sdclk_rise;
+    (* preserve *) logic [15:0] data_wait_cnt;
+    logic       data_wait_timeout;
+
+    assign data_wait_timeout = (sdcmd_stat == READING) && !reading_active && (data_wait_cnt >= DATA_TOKEN_TIMEOUT);
 
     always_ff @(posedge clk) begin
         if (~rst_n) begin
@@ -292,6 +300,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
             reading_active <= 0;
             bit_cnt <= 0;
             byte_cnt <= 0;
+            data_wait_cnt <= 0;
             outen <= 0;
             outbyte <= 0;
             rdone <= 0; // rdone is also used in the state machine above
@@ -302,15 +311,20 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
             // Only active when main state machine is in READING
             if (sdcmd_stat == READING) begin
                 if (!reading_active) begin
+                    if (sdclk_rise && !data_wait_timeout) begin
+                        data_wait_cnt <= data_wait_cnt + 16'd1;
+                    end
                     // Wait for start bit (0)
                     // Must detect start bit on sdclk rising edge to be synchronous
                     if (sdclk_rise && sddata0 == 0) begin
                         reading_active <= 1;
                         bit_cnt <= 7;
                         byte_cnt <= 0;
+                        data_wait_cnt <= 0;
                         rdone <= 0;
                     end
                 end else if (sdclk_rise) begin
+                    data_wait_cnt <= 0;
                     // Reading data on rising edge of sdclk
                     
                     if (byte_cnt < 512) begin
@@ -338,6 +352,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
                         end else begin
                              // Done
                              reading_active <= 0;
+                             data_wait_cnt <= 0;
                              rdone <= 1;
                         end
                     end
@@ -345,6 +360,7 @@ module sd_reader #( parameter [2:0] CLK_DIV = 3'd2,
             end else begin
                 // Not in READING state
                 reading_active <= 0;
+                data_wait_cnt <= 0;
                 rdone <= 0;
             end
         end
