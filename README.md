@@ -1,4 +1,14 @@
+<a id="en"></a>
+
 # DE1-SoC TF Card Reader and VGA Display
+
+![Language](https://img.shields.io/badge/Language-SystemVerilog%20%2F%20Verilog-007ACC.svg)
+![Simulation](https://img.shields.io/badge/Simulation-QuestaSim%20%2F%20UVM-0A7E07.svg)
+![Deployment](https://img.shields.io/badge/Deployment-Quartus%20Prime-1F6FEB.svg)
+![Platform](https://img.shields.io/badge/Platform-DE1--SoC-F59E0B.svg)
+
+[English](#en) | [中文](#cn)
+
 ## 1. Overview
 
 This project targets the DE1-SoC board and uses FPGA logic to access a TF card in SD Native 1-bit mode. It parses a FAT32 file system, locates `IMAGE.BIN`, stores a 320x240 RGB332 image into on-chip RAM, and displays it through VGA at 640x480@60Hz using 2x pixel scaling.
@@ -119,7 +129,8 @@ python view_image_bin.py IMAGE.BIN -o preview.ppm
 11. Press `KEY0` to reset the design.
 12. The image stored in `IMAGE.BIN` should now appear on the VGA display.
 
-**中文**
+<a id="cn"></a>
+
 ## 1. 项目简介
 
 本项目基于 DE1-SoC 开发板，使用 FPGA 逻辑直接以 SD Native 1-bit 模式读取 TF 卡，解析 FAT32 文件系统中的 `IMAGE.BIN` 文件，将 320x240、RGB332 格式的图像写入片上 RAM，并通过 VGA 输出为 640x480@60Hz、2 倍放大的图像。
