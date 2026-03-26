@@ -3,6 +3,8 @@
 
 This project targets the DE1-SoC board and uses FPGA logic to access a TF card in SD Native 1-bit mode. It parses a FAT32 file system, locates `IMAGE.BIN`, stores a 320x240 RGB332 image into on-chip RAM, and displays it through VGA at 640x480@60Hz using 2x pixel scaling.
 
+The DE1-SoC on-board TF card slot is wired directly to the HPS and does not expose an FPGA interface. Because of that, this project uses a custom TF breakout board that reroutes the TF card signals to the FPGA-accessible 40-pin GPIO header.
+
 Main data path:
 
 `TF Card -> sdcmd_ctrl -> sd_reader -> sd_file_reader -> img_ram -> vga_ctrl -> VGA`
@@ -40,7 +42,7 @@ Current debug indicators:
 
 - DE1-SoC fpga board
 - TF or Micro SD card
-- TF card breakout board(schematic provided in this project) or custom adapter
+- TF card breakout board or custom adapter
 - VGA monitor and VGA cable
 - USB-Blaster programming cable
 - Windows host PC
@@ -56,7 +58,7 @@ Current debug indicators:
 - [RTL/sd_file_reader.sv](RTL/sd_file_reader.sv): FAT32 parsing and file reader
 - [RTL/img_ram.sv](RTL/img_ram.sv): image RAM
 - [RTL/vga_ctrl.sv](RTL/vga_ctrl.sv): VGA timing controller
-- [quartus/pin_assign.tcl](quartus/pin_assign.tcl): pin assignment reference script
+- [pin_assign.tcl](quartus/pin_assign.tcl): pin assignment reference script
 - [uvm_tb](uvm_tb): UVM verification environment
 - [generate_image_bin.py](generate_image_bin.py): generate RGB332 image files
 - [view_image_bin.py](view_image_bin.py): preview RGB332 image files
@@ -102,10 +104,27 @@ python view_image_bin.py IMAGE.BIN --ascii
 python view_image_bin.py IMAGE.BIN -o preview.ppm
 ```
 
+## 9. Hardware Deployment
+
+1. Run the image generation program in [generate_image_bin.py](generate_image_bin.py) to create an `IMAGE.BIN` file.
+2. Copy the generated `IMAGE.BIN` file to a TF card formatted as FAT32.
+3. Create a new Quartus project.
+4. Run the pin assignment Tcl script [quartus/pin_assign.tcl](quartus/pin_assign.tcl).
+5. Add all source files under [RTL](RTL) to the Quartus project.
+6. Select `top_sd_vga` as the top-level entity.
+7. Compile the project and program the bitstream to the board.
+8. Use a 40-pin ribbon cable to connect the DE1-SoC GPIO header to the connector on the breakout PCB.
+9. Connect the VGA cable and monitor.
+10. Insert the prepared TF card into the breakout board.
+11. Press `KEY0` to reset the design.
+12. The image stored in `IMAGE.BIN` should now appear on the VGA display.
+
 **中文**
 ## 1. 项目简介
 
 本项目基于 DE1-SoC 开发板，使用 FPGA 逻辑直接以 SD Native 1-bit 模式读取 TF 卡，解析 FAT32 文件系统中的 `IMAGE.BIN` 文件，将 320x240、RGB332 格式的图像写入片上 RAM，并通过 VGA 输出为 640x480@60Hz、2 倍放大的图像。
+
+由于 DE1-SoC 板载 TF 卡槽直接连接到 HPS，并没有提供给 FPGA 使用的接口，因此本项目需要自制一个 TF 转接板，将 TF 卡信号转接到 FPGA 可访问的 40Pin GPIO 接口上。
 
 项目主数据路径如下：
 
@@ -203,4 +222,19 @@ python view_image_bin.py IMAGE.BIN
 python view_image_bin.py IMAGE.BIN --ascii
 python view_image_bin.py IMAGE.BIN -o preview.ppm
 ```
+
+## 9. 部署方式
+
+1. 运行 [generate_image_bin.py](generate_image_bin.py) 中的图片生成程序，获得 `IMAGE.BIN` 文件。
+2. 将生成好的 `IMAGE.BIN` 拷贝到格式化为 FAT32 的 TF 卡中。
+3. 在 Quartus 中创建一个新的工程。
+4. 运行引脚分配脚本 [quartus/pin_assign.tcl](quartus/pin_assign.tcl)。
+5. 将 [RTL](RTL) 文件夹中的所有源文件加入 Quartus 工程。
+6. 选择 `top_sd_vga` 作为顶层模块。
+7. 运行综合与编译，并将生成的比特流烧录到开发板。
+8. 通过 40Pin 口排线连接 DE1-SoC 与 breakout PCB 上的接口。
+9. 接好 VGA 显示器和 VGA 线缆。
+10. 将准备好的 TF 卡插入转接板。
+11. 按下 `KEY0` 进行复位。
+12. VGA 显示器上即可看到 `IMAGE.BIN` 对应的图片。
 
