@@ -7,7 +7,7 @@ module top_sd_vga #(
     // SD Card Interface
     output logic        SD_CLK,
     inout  wire         SD_CMD,
-    inout  wire  [3:0]  SD_DAT,   // SD_DAT[0] used as input sddata0
+    (* keep *) inout  wire  [3:0]  SD_DAT,   // SD_DAT[0] used as input sddata0
     output logic        SD_CD,
     
     // VGA Interface
@@ -70,6 +70,7 @@ module top_sd_vga #(
     (* preserve *) logic       sd_dbg_cmd_idx_match;
     (* preserve *) logic       sd_dbg_crc_match;
     (* preserve *) logic       sd_dbg_resp_check_fire;
+    (* keep, preserve *) logic [3:0] sd_dat_tap;
     
     logic debug_syntaxe;
     logic debug_timeout;
@@ -80,6 +81,7 @@ module top_sd_vga #(
     // SD_DAT[0] is input (MISO/Data0)
     // In 1-bit SD mode the unused DAT[3:1] lines stay released and rely on pull-ups.
     assign SD_DAT[3:1] = 3'bzzz;
+    assign sd_dat_tap  = SD_DAT;
     
     // SD Reader Module
     // Note: Assuming SD_DAT[0] is the data line from card
@@ -93,7 +95,7 @@ module top_sd_vga #(
         .outen(sd_outen),
         .outbyte(sd_outbyte),
         .sdclk(sd_clk_out),
-        .sddata0(SD_DAT[0]),
+        .sddata0(sd_dat_tap[0]),
         .sdcmd(SD_CMD),
         .debug_syntaxe(debug_syntaxe),
         .debug_timeout(debug_timeout),
