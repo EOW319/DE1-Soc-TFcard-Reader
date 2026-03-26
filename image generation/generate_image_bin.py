@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Generate IMAGE.BIN with simple RGB332 patterns.
+"""Generate IMAGE.BIN with simple RGB332 patterns or source images.
 
 Default output size is 320x240 (76800 bytes), RGB332 format.
 python generate_image_bin.py -o IMAGE.BIN -p gradient
 python generate_image_bin.py -o IMAGE.BIN -p checker -b 8
 python generate_image_bin.py -o IMAGE.BIN -p stripes -b 16
 python generate_image_bin.py -o IMAGE.BIN -p ramp
+python generate_image_bin.py -o IMAGE.BIN -i input.png
 """
 
 from __future__ import annotations
 
 import argparse
-import struct
 from pathlib import Path
+
+from PIL import Image
 
 
 def clamp_u8(value: int) -> int:
@@ -81,11 +83,25 @@ def generate(width: int, height: int, pattern: str, block: int) -> bytes:
     return bytes(data)
 
 
+def generate_from_image(image_path: Path, width: int, height: int) -> bytes:
+    image = Image.open(image_path).convert("RGB")
+    image = image.resize((width, height), Image.Resampling.LANCZOS)
+
+    data = bytearray(width * height)
+    pixels = image.load()
+    for y in range(height):
+        for x in range(width):
+            r, g, b = pixels[x, y]
+            data[y * width + x] = rgb888_to_rgb332(r, g, b)
+    return bytes(data)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate IMAGE.BIN (RGB332)")
     parser.add_argument("-o", "--output", default="IMAGE.BIN", help="Output file path")
     parser.add_argument("-W", "--width", type=int, default=320, help="Image width")
     parser.add_argument("-H", "--height", type=int, default=240, help="Image height")
+    parser.add_argument("-i", "--input-image", default="", help="Optional input image path")
     parser.add_argument(
         "-p",
         "--pattern",
@@ -96,7 +112,11 @@ def main() -> int:
     parser.add_argument("-b", "--block", type=int, default=16, help="Block size for checker/stripes")
     args = parser.parse_args()
 
-    data = generate(args.width, args.height, args.pattern, args.block)
+    if args.input_image:
+        data = generate_from_image(Path(args.input_image), args.width, args.height)
+    else:
+        data = generate(args.width, args.height, args.pattern, args.block)
+
     out_path = Path(args.output)
     out_path.write_bytes(data)
     print(f"Wrote {len(data)} bytes to {out_path}")

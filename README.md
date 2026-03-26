@@ -59,6 +59,11 @@ Current debug indicators:
 - Intel Quartus Prime Lite 18.1
 - QuestaSim
 - Python 3
+<div align="center">
+  <img src="./pics/pcb.jpg" width="400">
+  <br>
+  <i style="color: #666;">TF card breakout board</i>
+</div>
 
 ## 5. Repository Structure
 
@@ -68,7 +73,9 @@ Current debug indicators:
 - [RTL/sd_file_reader.sv](RTL/sd_file_reader.sv): FAT32 parsing and file reader
 - [RTL/img_ram.sv](RTL/img_ram.sv): image RAM
 - [RTL/vga_ctrl.sv](RTL/vga_ctrl.sv): VGA timing controller
-- [pin_assign.tcl](quartus/pin_assign.tcl): pin assignment reference script
+- [breakout_board_pcb](breakout_board_pcb): breakout board deliverables, including schematic, BOM, and Gerber package
+- [image generation](image%20generation): image conversion utilities and usage notes
+- [pin_assign.tcl](pin_assign.tcl): pin assignment reference script
 - [uvm_tb](uvm_tb): UVM verification environment
 - [generate_image_bin.py](generate_image_bin.py): generate RGB332 image files
 - [view_image_bin.py](view_image_bin.py): preview RGB332 image files
@@ -129,6 +136,13 @@ python view_image_bin.py IMAGE.BIN -o preview.ppm
 11. Press `KEY0` to reset the design.
 12. The image stored in `IMAGE.BIN` should now appear on the VGA display.
 
+![demo](./pics/demo.jpg)
+*Image Source: The image displayed is "Bloodborne" by wlop on Patreon*
+
+## Credits & Acknowledgements
+- **Architecture Inspiration:** The overall system architecture and data flow of this project were inspired by [FPGA-SDcard-Reader](https://github.com/WangXuan95/FPGA-SDcard-Reader), which is licensed under **GPL-3.0**. While the entire codebase was independently implemented from scratch, the structural design owes much to their pioneering work.
+- **Artwork:** Special thanks to [wlop](https://www.patreon.com/wlop) for the *Bloodborne* fan art used in the hardware demo.
+
 <a id="cn"></a>
 
 ## 1. 项目简介
@@ -178,6 +192,11 @@ python view_image_bin.py IMAGE.BIN -o preview.ppm
 - Intel Quartus Prime Lite 18.1
 - QuestaSim
 - Python 3
+<div align="center">
+  <img src="./pics/pcb.jpg" width="400">
+  <br>
+  <i style="color: #666;">Tf卡转接板</i>
+</div>
 
 ## 5. 仓库结构
 
@@ -187,6 +206,8 @@ python view_image_bin.py IMAGE.BIN -o preview.ppm
 - [RTL/sd_file_reader.sv](RTL/sd_file_reader.sv): FAT32 解析与文件读取
 - [RTL/img_ram.sv](RTL/img_ram.sv): 图像 RAM
 - [RTL/vga_ctrl.sv](RTL/vga_ctrl.sv): VGA 时序控制
+- [breakout_board_pcb](breakout_board_pcb): TF 转接板工程资料，包含原理图、BOM 和 Gerber 打包文件
+- [image generation](image%20generation): 图像转换脚本与使用说明
 - [pin_assign.tcl](pin_assign.tcl): 引脚分配参考脚本
 - [sim/Makefile](sim/Makefile): 仿真入口
 - [generate_image_bin.py](generate_image_bin.py): 生成 RGB332 图像文件
@@ -234,6 +255,8 @@ python view_image_bin.py IMAGE.BIN --ascii
 python view_image_bin.py IMAGE.BIN -o preview.ppm
 ```
 
+更多脚本使用说明和实际照片预留位置见 [image generation/README.md](image%20generation/README.md)。
+
 ## 9. 部署方式
 
 1. 运行 [generate_image_bin.py](generate_image_bin.py) 中的图片生成程序，获得 `IMAGE.BIN` 文件。
@@ -249,3 +272,8 @@ python view_image_bin.py IMAGE.BIN -o preview.ppm
 11. 按下 `KEY0` 进行复位。
 12. VGA 显示器上即可看到 `IMAGE.BIN` 对应的图片。
 
+![demo](./pics/demo.jpg)
+
+## 致谢与参考
+- **架构参考：** 本项目的整体系统架构与数据流参考了 [FPGA-SDcard-Reader](https://github.com/WangXuan95/FPGA-SDcard-Reader)（基于 **GPL-3.0** 协议）。尽管本项目的所有代码均为独立编写实现，但其结构设计很大程度上受益于原作者的开创性工作。
+- **艺术致谢：** 感谢画师 [wlop](https://www.patreon.com/wlop) 创作的《Bloodborne》同人画作，本项目将其用于硬件演示。
