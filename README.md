@@ -25,6 +25,7 @@ This repository includes:
 - Quartus pin constraints
 - Layered UVM verification environment
 - RGB332 image generation and preview utilities
+- TF card breakout board PCB design files (Schematic, Gerber, BOM)
 
 ## 2. Features
 
@@ -155,12 +156,13 @@ python view_image_bin.py IMAGE.BIN -o preview.ppm
 
 `TF Card -> sdcmd_ctrl -> sd_reader -> sd_file_reader -> img_ram -> vga_ctrl -> VGA`
 
-当前仓库同时包含：
+本项目包含：
 
 - 可综合的 RTL 设计
 - Quartus 工程与引脚约束
 - QuestaSim/UVM 分层验证环境
 - RGB332 图像生成与预览脚本
+- TF 卡转接板 PCB 设计文件（包含原理图、Gerber 生产文件和 BOM 表）
 
 ## 2. 功能特性
 
