@@ -1,5 +1,0 @@
-选择git bash
-# 在Git Bash终端中
-cd /d/DE1-Soc-TFcard-Reader/sim
-export PATH="/c/modeltech64_2020.4/win64:$PATH"
-make sim_l1 TEST=sdcmd_smoke_test
